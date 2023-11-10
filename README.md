@@ -2,7 +2,7 @@
 Interface to the Tao program (from the Bmad ecosystem) for simulating high energy charged particle beams and X-rays.
 
 ## Command line interface to Tao
-There are currently two ways of running Tao from a Julia program. The first, and recommended way, is to have the program create a separate Tao command file (e.g. tao.cmd), which is then fed into Tao in the command line interface. For example, in the Julia program:
+There are currently two ways of running Tao from a Julia program. The first, and recommended way, is to have the program create a separate Tao command file (e.g. `tao.cmd`), which is then fed into Tao in the command line interface. For example, in the Julia program:
 ```
 run(`tao -lat esr.bmad -command "call tao.cmd"`)
 ```
@@ -13,7 +13,7 @@ The second way of running Tao from a Julia program is more interactive, however 
 tao_cmd = Cmd(`tao -lat esr-main-unique.bmad -noplot -no_rad_int -quiet`)
 const global tao = open(tao_cmd, "r+")
 ```
-Commands can then be be run in Tao using ```println(tao, ...)```. For example,
+Commands can then be run in Tao using ```println(tao, ...)```. For example,
 ```
 println(tao, "set ele * kick = 0")
 println(tao, "show -write uni.txt uni")
