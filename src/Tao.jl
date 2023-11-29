@@ -26,7 +26,7 @@ kick times the sign of the second kick. E.g., for only pi-bumps, use `phi_start`
 2*pi*N apart), use `phi_start` = 0, `phi_step` = 2*pi, `sgn` = 1.
 
 ### Input
-- `lat`       -- Lattice file name
+- `lat`       -- lat file name
 - `phi_start` -- phi_start as described above
 - `phi_step`  -- phi_step as described above
 - `sgn`       -- sgn as described above
@@ -40,10 +40,10 @@ function BAGELS_1(lat, phi_start, phi_step, sgn, kick=1e-5, tol=1e-8)
   # First, obtain all combinations of bumps with desired phase advance
   if !isfile("$(path)/bumps$(str_phi).txt")
     if !isfile("$(path)/vkickers.txt")
-      run(`tao -lat $lattice -noplot -command "set ele * kick = 0; show -write $(path)/vkickers.txt lat vkicker::* -at phi_b@f20.16; exit"`)
+      run(`tao -lat $lat -noplot -command "set ele * kick = 0; show -write $(path)/vkickers.txt lat vkicker::* -at phi_b@f20.16; exit"`)
     end
     if !isfile("$(path)/kicks.txt")
-      run(`tao -lat $lattice -noplot -command "show -write $(path)/kicks.txt lat vkicker::* -at phi_b@f20.16 -at kick@f20.16; exit"`)
+      run(`tao -lat $lat -noplot -command "show -write $(path)/kicks.txt lat vkicker::* -at phi_b@f20.16 -at kick@f20.16; exit"`)
     end
 
   # Read coil data and extract valid pairs
@@ -95,7 +95,7 @@ for i=1:length(coil_pairs[:,1])
 end
 close(tao_cmd)
 
-#run(`tao -lat $lattice -noplot`)
+#run(`tao -lat $lat -noplot`)
 end
 
 
