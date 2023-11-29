@@ -33,7 +33,7 @@ kick times the sign of the second kick. E.g., for only pi-bumps, use `phi_start`
 - `kick`      -- (Optional) Coil kick, default is 1e-5
 - `tol`       -- (Optional) Tolerance for difference in phase, default is 1e-8
 """
-function BAGELS_1(lat, phi_diff, phi_start, sgn, kick=1e-5, tol=1e-8)
+function BAGELS_1(lat, phi_start, phi_step, sgn, kick=1e-5, tol=1e-8)
   path = metadata_path(lat)
   str_phi = @sprintf("%1.2e", phi_start) * "_" * @sprintf("%1.2e", phi_step)
   str_kick = @sprintf("1.2e", kick)
