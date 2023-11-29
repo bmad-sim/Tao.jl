@@ -79,7 +79,7 @@ strengths = coils[:,3:4]
 mkdir("$(path)/responses_$(str_kick)")
 # All of these bumps are separate group knobs, the individual coils have opposite strengths
 # Now build response matrix of dn/ddelta at each sbend (sampled at beginning and ends of bends)
-tao_cmd = open("$(path)/BAGELS1.cmd", "w")
+tao_cmd = open("$(path)/BAGELS_1.cmd", "w")
 println(tao_cmd, "show -write $(path)/responses_$(str_kick)/baseline.txt lat sbend::* multipole::* -at spin_dn_dpz.x@f20.16 -at spin_dn_dpz.y@f20.16 -at spin_dn_dpz.z@f20.16")
 
 for i=1:length(coil_pairs[:,1])
@@ -95,7 +95,7 @@ for i=1:length(coil_pairs[:,1])
 end
 close(tao_cmd)
 
-#run(`tao -lat $lat -noplot`)
+run(`tao -lat $lat -noplot -command "$(path)/BAGELS_1.cmd"`)
 end
 
 
