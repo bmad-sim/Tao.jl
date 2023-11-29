@@ -75,8 +75,9 @@ end
 coils = readdlm("$(path)/bumps$(str_phi).txt", ',')
 coil_pairs = coils[:,1:2]
 strengths = coils[:,3:4]
-
-mkdir("$(path)/responses_$(str_kick)")
+if isdir("$(path)/responses_$(str_kick)")
+  mkdir("$(path)/responses_$(str_kick)")
+end
 # All of these bumps are separate group knobs, the individual coils have opposite strengths
 # Now build response matrix of dn/ddelta at each sbend (sampled at beginning and ends of bends)
 tao_cmd = open("$(path)/BAGELS_1.cmd", "w")
@@ -93,12 +94,11 @@ for i=1:length(coil_pairs[:,1])
   println(tao_cmd, "set ele $(coil1) kick = $(strength1)")
   println(tao_cmd, "set ele $(coil2) kick = $(strength2)")
 end
+println(tao_cmd, "exit")
 close(tao_cmd)
 
 run(`tao -lat $lat -noplot -command "call $(path)/BAGELS_1.cmd"`)
 end
-
-
 
 
 
