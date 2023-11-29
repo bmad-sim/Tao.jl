@@ -36,7 +36,7 @@ kick times the sign of the second kick. E.g., for only pi-bumps, use `phi_start`
 function BAGELS_1(lat, phi_start, phi_step, sgn, kick=1e-5, tol=1e-8)
   path = metadata_path(lat)
   str_phi = @sprintf("%1.2e", phi_start) * "_" * @sprintf("%1.2e", phi_step)
-  str_kick = @sprintf("1.2e", kick)
+  str_kick = @sprintf("%1.2e", kick)
   # First, obtain all combinations of bumps with desired phase advance
   if !isfile("$(path)/bumps$(str_phi).txt")
     if !isfile("$(path)/vkickers.txt")
