@@ -95,7 +95,7 @@ for i=1:length(coil_pairs[:,1])
 end
 close(tao_cmd)
 
-run(`tao -lat $lat -noplot -command "$(path)/BAGELS_1.cmd"`)
+run(`tao -lat $lat -noplot -command "call $(path)/BAGELS_1.cmd"`)
 end
 
 
