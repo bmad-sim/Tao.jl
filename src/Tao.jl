@@ -6,7 +6,7 @@ using Printf
 export BAGELS_1, metadata_path
 
 function metadata_path(lat)
-  path = homedir() * "/.tao.jl" * pwd()[homedir()+1:end] * "/" * lat
+  path = homedir() * "/.tao.jl" * pwd()[length(homedir())+1:end] * "/" * lat
   if !ispath(path)
     mkpath(path)
   end
@@ -20,10 +20,10 @@ end
 
 Calculates the response of dn/ddelta with all combinations of closed orbit 2-bumps.
 Coil pairs with phase separation of dPhi are included when 
-rem(dPhi - phi_start, phi_step, RoundNearest) < tol. sgn specifies the sign of the first
-kick times the sign of the second kick. E.g., for only pi-bumps, use phi_start = pi, 
-phi_step = (something large), and sgn = -1. For all orthogonal kicks (equal kicks 
-2*pi*N apart), use phi_start = 0, phi_step = 2*pi, sgn = 1.
+`rem(dPhi - phi_start, phi_step, RoundNearest) < tol`. `sgn` specifies the sign of the first
+kick times the sign of the second kick. E.g., for only pi-bumps, use `phi_start` = pi, 
+`phi_step` = (something large), and `sgn` = -1. For all orthogonal kicks (equal kicks 
+2*pi*N apart), use `phi_start` = 0, `phi_step` = 2*pi, `sgn` = 1.
 
 ### Input
 - `lat`       -- Lattice file name
