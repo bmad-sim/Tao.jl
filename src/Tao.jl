@@ -169,7 +169,7 @@ function BAGELS_2(lat, phi_start, phi_step, suffix="",outf="BAGELS.bmad", kick=1
     else
       knob_out = open(outf, "a")
     end
-    println(knob_out, "BAGELS$(suffix)$(@sprintf("%0$(length(string(i)))", i)): group = {")
+    println(knob_out, "BAGELS$(suffix)$(@sprintf("%0$(length(string(i)))d", i)): group = {")
 
     for coil in unique_coils
       strength = 0.
