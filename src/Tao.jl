@@ -84,7 +84,7 @@ function BAGELS_1(lat, phi_start, phi_step, sgn, kick=1e-5, tol=1e-8)
   coils = readdlm("$(path)/bumps$(str_phi).txt", ',')
   coil_pairs = coils[:,1:2]
   strengths = coils[:,3:4]
-  if isdir("$(path)/responses_$(str_kick)")
+  if !isdir("$(path)/responses_$(str_kick)")
     mkdir("$(path)/responses_$(str_kick)")
   end
   # All of these bumps are separate group knobs, the individual coils have opposite strengths
