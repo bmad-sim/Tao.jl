@@ -305,6 +305,9 @@ function pol_scan(lat, agamma0)
     println(tao_cmd, "python -append $(path)/spin.dat spin_polarization")
   end
 
+  println(tao_cmd, "exit")
+  close(tao_cmd)
+
   # Execute the scan
   run(`tao -lat $lat -noplot -command "call $(path)/spin.tao"`)
 
