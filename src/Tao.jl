@@ -33,31 +33,31 @@ for a lattice.
 
 """
 struct PolData
-  agamma0::Float64
-  spin_tune::Float64
-  P_st::Float64
-  P_dk::Float64
-  P_dk_a::Float64
-  P_dk_b::Float64
-  P_dk_c::Float64
-  P_dk_2a::Float64
-  P_dk_2b::Float64
-  P_dk_2c::Float64
-  tau_bks::Float64
-  tau_dep::Float64
-  tau_dep_a::Float64
-  tau_dep_b::Float64
-  tau_dep_c::Float64
-  tau_dep_2a::Float64
-  tau_dep_2b::Float64
-  tau_dep_2c::Float64
-  tau_eq::Float64
-  T::Float64
-  T_du::Float64
-  T_dd::Float64
-  P_t::Float64
-  T_du_t::Float64
-  T_dd_t::Float64
+  agamma0 #::Float64
+  spin_tune #::Float64
+  P_st  #::Float64
+  P_dk  #::Float64
+  P_dk_a  #::Float64
+  P_dk_b  #::Float64
+  P_dk_c  #::Float64
+  P_dk_2a #::Float64
+  P_dk_2b #::Float64
+  P_dk_2c #::Float64
+  tau_bks #::Float64
+  tau_dep #::Float64
+  tau_dep_a #::Float64
+  tau_dep_b #::Float64
+  tau_dep_c #::Float64
+  tau_dep_2a  #::Float64
+  tau_dep_2b  #::Float64
+  tau_dep_2c  #::Float64
+  tau_eq  #::Float64
+  T #::Float64
+  T_du  #::Float64
+  T_dd  #::Float64
+  P_t #::Float64
+  T_du_t  #::Float64
+  T_dd_t  #::Float64
 end
 
 """
@@ -250,7 +250,7 @@ function BAGELS_2(lat, phi_start, phi_step, N_knobs; suffix="", outf="BAGELS.bma
   end
 end
 
-function calc_refill_sensitivity(P_dk, tau_eq; P_0 = 0.85, T = 4.8)::Float64
+function calc_refill_sensitivity(P_dk, tau_eq; P_0 = 0.85, T = 4.8)
   P_dd = x -> (-P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x
   P_du = x -> (P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (-P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x
   P = T_du -> (P_dd((T_du.*T./(2 .*T_du.-T))) + P_du(T_du)).^2
@@ -261,7 +261,7 @@ function calc_refill_sensitivity(P_dk, tau_eq; P_0 = 0.85, T = 4.8)::Float64
   return P_du(T_du_t), T_du_t, T_dd_t
 end
 
-function calc_refill_time(P_dk, tau_eq; P_0 = 0.85, P_min_avg = 0.7)::Float64
+function calc_refill_time(P_dk, tau_eq; P_0 = 0.85, P_min_avg = 0.7)
   P_dd = x -> (-P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x .+ P_min_avg
   P_du = x -> (P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (-P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x .- P_min_avg
   T_dd = nlsolve(P_dd, 10. .*ones(length(P_dk))).zero
