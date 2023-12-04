@@ -5,12 +5,17 @@ using Printf
 
 export BAGELS_1, metadata_path
 
+# Returns empty string if lattice not found
 function metadata_path(lat)
-  path = homedir() * "/.tao_jl" * pwd()[length(homedir())+1:end] * "/" * lat
-  if !ispath(path)
-    mkpath(path)
+  if isfile(pwd() * "/$(lat)")
+    path = homedir() * "/.tao_jl" * pwd()[length(homedir())+1:end] * "/" * lat
+    if !ispath(path)
+      mkpath(path)
+    end
+    return path
+  else
+    return ""
   end
-  return path
 end
 
 # --- Polarization routines ---
@@ -35,6 +40,10 @@ the sign of the first kick times the sign of the second kick. E.g., for only pi-
 """
 function BAGELS_1(lat, phi_start, phi_step, sgn, kick=1e-5, tol=1e-8)
   path = metadata_path(lat)
+  if path == ""
+    println("Lattice file $(lat) not found!")
+    return
+  end
   str_phi = @sprintf("%1.2e", phi_start) * "_" * @sprintf("%1.2e", phi_step)
   str_kick = @sprintf("%1.2e", kick)
   # First, obtain all combinations of bumps with desired phase advance
@@ -118,6 +127,11 @@ response matrix to obtain the best adjustment groups, based on the settings of s
 """
 function BAGELS_2(lat, phi_start, phi_step, suffix="",outf="BAGELS.bmad", kick=1e-5)
   path = metadata_path(lat)
+  if path == ""
+    println("Lattice file $(lat) not found!")
+    return
+  end
+  
   str_phi = @sprintf("%1.2e", phi_start) * "_" * @sprintf("%1.2e", phi_step)
   str_kick = @sprintf("%1.2e", kick)
 
