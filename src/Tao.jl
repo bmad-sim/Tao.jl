@@ -120,10 +120,13 @@ function BAGELS_1(lat, phi_start, phi_step, sgn, kick=1e-5, tol=1e-8)
 end
 
 """
-    BAGELS_2(lat, phi_start, phi_step, kick=1e-5)
+    BAGELS_2(lat, phi_start, phi_step, N_knobs; suffix="", outf="BAGELS.bmad", kick=1e-5))
 
 Best Adjustment Groups for ELectron Spin (BAGELS) method step 2: peform an SVD of the 
 response matrix to obtain the best adjustment groups, based on the settings of step 1. 
+E.g., for only pi-bumps, use `phi_start` = pi, `phi_step` = (something large), and 
+`sgn` = -1. For all orthogonal kicks (equal kicks 2*pi*N apart), use `phi_start` = 0, 
+`phi_step` = 2*pi, `sgn` = 1.
 
 
 ### Input
@@ -135,7 +138,7 @@ response matrix to obtain the best adjustment groups, based on the settings of s
 - `outf`      -- (Optional) Output file name with group elements constructed from BAGELS, default is "BAGELS.bmad"
 - `kick`      -- (Optional) Coil kick, default is 1e-5
 """
-function BAGELS_2(lat, phi_start, phi_step, suffix="",outf="BAGELS.bmad", kick=1e-5)
+function BAGELS_2(lat, phi_start, phi_step, N_knobs; suffix="", outf="BAGELS.bmad", kick=1e-5)
   path = metadata_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
