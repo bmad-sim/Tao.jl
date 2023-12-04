@@ -428,7 +428,7 @@ function get_pol_data(lat)
     return
   end
 
-  pol_data_dlm = readlm("$(path)/pol_data.dlm", pol_data_dlm, ';')[:,2:end]
+  pol_data_dlm = readlm("$(path)/pol_data.dlm", ';')[:,2:end]
   
   return PolData( pol_data_dlm[1,:],
                   pol_data_dlm[2,:],
