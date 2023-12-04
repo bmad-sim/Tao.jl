@@ -2,10 +2,16 @@ module Tao
 using DelimitedFiles
 using LinearAlgebra
 using Printf
+using NLsolve
 
 export  metadata_path,
+        PolData,
         BAGELS_1,
-        BAGELS_2
+        BAGELS_2,
+        calc_refill_sensitivity,
+        calc_refill_time,
+        pol_scan,
+        get_pol_data
 
 # Returns empty string if lattice not found
 function metadata_path(lat)
@@ -21,6 +27,38 @@ function metadata_path(lat)
 end
 
 # --- Polarization routines ---
+"""
+Structure to store important polarization quantities calculated 
+for a lattice.
+
+"""
+struct PolData
+  agamma0::Float64
+  spin_tune::Float64
+  P_st::Float64
+  P_dk::Float64
+  P_dk_a::Float64
+  P_dk_b::Float64
+  P_dk_c::Float64
+  P_dk_2a::Float64
+  P_dk_2b::Float64
+  P_dk_2c::Float64
+  tau_bks::Float64
+  tau_dep::Float64
+  tau_dep_a::Float64
+  tau_dep_b::Float64
+  tau_dep_c::Float64
+  tau_dep_2a::Float64
+  tau_dep_2b::Float64
+  tau_dep_2c::Float64
+  tau_eq::Float64
+  T::Float64
+  T_du::Float64
+  T_dd::Float64
+  P_t::Float64
+  T_du_t::Float64
+  T_dd_t::Float64
+end
 
 """
     BAGELS_1(lat, phi_start, phi_step, sgn, kick=1e-5, tol=1e-8)
@@ -210,6 +248,210 @@ function BAGELS_2(lat, phi_start, phi_step, N_knobs; suffix="", outf="BAGELS.bma
     println(knob_out, "}, var = {X}")
     close(knob_out)
   end
+end
+
+function calc_refill_sensitivity(P_dk, tau_eq; P_0 = 0.85, T = 4.8)
+  P_dd = x -> (-P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x
+  P_du = x -> (P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (-P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x
+  P = T_du -> (P_dd((T_du.*T./(2 .*T_du.-T))) + P_du(T_du)).^2
+
+  T_du_t = nlsolve(P, 10. .*ones(length(P_dk))).zero
+  T_dd_t = (T_du_t.*T./(2 .*T_du_t.-T))
+  
+  return P_du(T_du), T_du_t, T_dd_t
+end
+
+function calc_refill_time(P_dk, tau_eq; P_0 = 0.85, P_min_avg = 0.7)
+  P_dd = x -> (-P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x .+ P_min_avg
+  P_du = x -> (P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (-P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x .- P_min_avg
+  T_dd = nlsolve(P_dd, 10. .*ones(length(P_dk))).zero
+  T_du = nlsolve(P_du, 10. .*ones(length(P_dk))).zero
+  
+  T=2*T_dd.*T_du./(T_dd + T_du)
+  return T, T_du, T_dd
+end
+
+
+"""
+    pol_scan(lat, agamma0)
+
+Performs a polarization scan across the agamma0 range specified, calculates 
+important quantities and stores them for fast reference in the metadata.
+
+### Input
+- `lat`      -- lat file name
+- `agamma0`  -- range of a*gamma_0 to scan over
+
+### Output 
+- `pol_data` -- PolData struct containing polarization quantities for lattice
+"""
+function pol_scan(lat, agamma0)
+  path = metadata_path(lat)
+  if path == ""
+    println("Lattice file $(lat) not found!")
+    return
+  end
+
+  # Generate tao command script
+  tao_cmd = open("$(path)/spin.tao", "w")
+  a = 1.15965218e-3
+  m_e = 0.51099895e6
+  println(tao_cmd, "set ele * spin_tracking_method = sprint")
+  println(tao_cmd, "set bmad_com spin_tracking_on = T")
+  println(tao_cmd, "set ele 0 e_tot = $(agamma0[1]*m_elec/anom_mom)")
+  println(tao_cmd, "python -write $(path)/spin.dat spin_polarization")
+  for i = 1:length(agamma0)
+    println(tao_cmd, "set ele 0 e_tot = $(agamma0[i]*m_elec/anom_mom)")
+    println(tao_cmd, "python -append $(path)/spin.dat spin_polarization")
+  end
+
+  # Execute the scan
+  run(`tao -lat $lat -noplot -command "call $(path)/spin.tao"`)
+
+  # Calculate important quantities and store in metadata
+  data = readdlm("$(path)/spin.dat", ';')[:,4]
+  data = permutedims(reshape(data, (18,Int(length(data)/18))))
+  agamma0    = data[:,1]
+  spin_tune  = data[:,2]
+  P_st       = data[:,3]
+  P_dk       = data[:,4]
+  P_dk_a     = data[:,5]
+  P_dk_b     = data[:,6]
+  P_dk_c     = data[:,7]
+  P_dk_2a    = data[:,8]
+  P_dk_2b    = data[:,9]
+  P_dk_2c    = data[:,10]
+  tau_bks    = 1 ./data[:,11] ./ 60
+  tau_dep    = 1 ./data[:,12] ./ 60
+  tau_dep_a  = 1 ./data[:,13] ./ 60
+  tau_dep_b  = 1 ./data[:,14] ./ 60
+  tau_dep_c  = 1 ./data[:,15] ./ 60
+  tau_dep_2a = 1 ./data[:,16] ./ 60
+  tau_dep_2b = 1 ./data[:,17] ./ 60
+  tau_dep_2c = 1 ./data[:,18] ./ 60
+  tau_eq = (tau_dep.^-1+tau_bks.^-1).^-1
+  T, T_du, T_dd = calc_refill_time(P_dk,tau_eq)
+  P_t, T_du_t, T_dd_t = calc_refill_sensitivity(P_dk,tau_eq)
+
+  pol_data = PolData( agamma0,
+                      spin_tune,
+                      P_st,
+                      P_dk,
+                      P_dk_a,
+                      P_dk_b,
+                      P_dk_c,
+                      P_dk_2a,
+                      P_dk_2b,
+                      P_dk_2c,
+                      tau_bks,
+                      tau_dep,
+                      tau_dep_a,
+                      tau_dep_b,
+                      tau_dep_c,
+                      tau_dep_2a,
+                      tau_dep_2b,
+                      tau_dep_2c,
+                      tau_eq,
+                      T,
+                      T_du,
+                      T_dd,
+                      P_t,
+                      T_du_t,
+                      T_dd_t)
+  names =["agamma0",
+          "spin_tune",
+          "P_st",
+          "P_dk",
+          "P_dk_a",
+          "P_dk_b",
+          "P_dk_c",
+          "P_dk_2a",
+          "P_dk_2b",
+          "P_dk_2c",
+          "tau_bks",
+          "tau_dep",
+          "tau_dep_a",
+          "tau_dep_b",
+          "tau_dep_c",
+          "tau_dep_2a",
+          "tau_dep_2b",
+          "tau_dep_2c",
+          "tau_eq",
+          "T",
+          "T_du",
+          "T_dd",
+          "P_t",
+          "T_du_t",
+          "T_dd_t"]
+  pol_data_dlm = hcat(names, permutedims(hcat(agamma0,
+                                  spin_tune,
+                                  P_st,
+                                  P_dk,
+                                  P_dk_a,
+                                  P_dk_b,
+                                  P_dk_c,
+                                  P_dk_2a,
+                                  P_dk_2b,
+                                  P_dk_2c,
+                                  tau_bks,
+                                  tau_dep,
+                                  tau_dep_a,
+                                  tau_dep_b,
+                                  tau_dep_c,
+                                  tau_dep_2a,
+                                  tau_dep_2b,
+                                  tau_dep_2c,
+                                  tau_eq,
+                                  T,
+                                  T_du,
+                                  T_dd,
+                                  P_t,
+                                  T_du_t,
+                                  T_dd_t)))
+  writedlm("$(path)/pol_data.dlm", pol_data_dlm, ';')
+  return pol_data
+end
+
+
+"""
+    get_pol_data(lat)
+
+Gets the polarization data for the specified lattice.
+"""
+function get_pol_data(lat)
+  path = metadata_path(lat)
+  if path == ""
+    println("Lattice file $(lat) not found!")
+    return
+  end
+
+  pol_data_dlm = readlm("$(path)/pol_data.dlm", pol_data_dlm, ';')[:,2:end]
+  
+  return PolData( pol_data_dlm[1,:],
+                  pol_data_dlm[2,:],
+                  pol_data_dlm[3,:],
+                  pol_data_dlm[4,:],
+                  pol_data_dlm[5,:],
+                  pol_data_dlm[6,:],
+                  pol_data_dlm[7,:],
+                  pol_data_dlm[8,:],
+                  pol_data_dlm[9,:],
+                  pol_data_dlm[10,:],
+                  pol_data_dlm[11,:],
+                  pol_data_dlm[12,:],
+                  pol_data_dlm[13,:],
+                  pol_data_dlm[14,:],
+                  pol_data_dlm[15,:],
+                  pol_data_dlm[16,:],
+                  pol_data_dlm[17,:],
+                  pol_data_dlm[18,:],
+                  pol_data_dlm[19,:],
+                  pol_data_dlm[20,:],
+                  pol_data_dlm[21,:],
+                  pol_data_dlm[22,:],
+                  pol_data_dlm[23,:],
+                  pol_data_dlm[24,:],
+                  pol_data_dlm[25,:])
 end
 
 end
