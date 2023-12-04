@@ -3,7 +3,9 @@ using DelimitedFiles
 using LinearAlgebra
 using Printf
 
-export BAGELS_1, metadata_path
+export  metadata_path,
+        BAGELS_1,
+        BAGELS_2
 
 # Returns empty string if lattice not found
 function metadata_path(lat)
@@ -46,8 +48,16 @@ function BAGELS_1(lat, phi_start, phi_step, sgn, kick=1e-5, tol=1e-8)
   end
   str_phi = @sprintf("%1.2e", phi_start) * "_" * @sprintf("%1.2e", phi_step)
   str_kick = @sprintf("%1.2e", kick)
+
+  # Generate directory in lattice metadata path for these phi_start and phi_step
+  if !isdir("$(path)/BAGELS_$(str_phi)")
+    mkdir("$(path)/BAGELS_$(str_phi)")
+  end
+
+  path = "$(path)/BAGELS_$(str_phi)"
+
   # First, obtain all combinations of bumps with desired phase advance
-  if !isfile("$(path)/bumps$(str_phi).txt")
+  if !isfile("$(path)/bumps.txt")
     if !isfile("$(path)/vkickers.txt")
       run(`tao -lat $lat -noplot -command "set ele * kick = 0; show -write $(path)/vkickers.txt lat vkicker::* -at phi_b@f20.16; exit"`)
     end
@@ -78,10 +88,10 @@ function BAGELS_1(lat, phi_start, phi_step, sgn, kick=1e-5, tol=1e-8)
     coil_pairs = permutedims(reshape(coil_pairs_list, 2, Int(length(coil_pairs_list)/2)))
     strengths = permutedims(reshape(coil_kicks_list, 2, Int(length(coil_pairs_list)/2)))
 
-    writedlm("$(path)/bumps$(str_phi).txt", hcat(coil_pairs, strengths), ',')
+    writedlm("$(path)/bumps.txt", hcat(coil_pairs, strengths), ',')
   end
 
-  coils = readdlm("$(path)/bumps$(str_phi).txt", ',')
+  coils = readdlm("$(path)/bumps.txt", ',')
   coil_pairs = coils[:,1:2]
   strengths = coils[:,3:4]
   if !isdir("$(path)/responses_$(str_kick)")
@@ -89,7 +99,7 @@ function BAGELS_1(lat, phi_start, phi_step, sgn, kick=1e-5, tol=1e-8)
   end
   # All of these bumps are separate group knobs, the individual coils have opposite strengths
   # Now build response matrix of dn/ddelta at each sbend (sampled at beginning and ends of bends)
-  tao_cmd = open("$(path)/BAGELS_1.cmd", "w")
+  tao_cmd = open("$(path)/responses_$(str_kick)/BAGELS_1.cmd", "w")
   println(tao_cmd, "show -write $(path)/responses_$(str_kick)/baseline.txt lat sbend::* multipole::* -at spin_dn_dpz.x@f20.16 -at spin_dn_dpz.y@f20.16 -at spin_dn_dpz.z@f20.16")
 
   for i=1:length(coil_pairs[:,1])
@@ -106,7 +116,7 @@ function BAGELS_1(lat, phi_start, phi_step, sgn, kick=1e-5, tol=1e-8)
   println(tao_cmd, "exit")
   close(tao_cmd)
 
-  run(`tao -lat $lat -noplot -command "call $(path)/BAGELS_1.cmd"`)
+  run(`tao -lat $lat -noplot -command "call $(path)/responses_$(str_kick)/BAGELS_1.cmd"`)
 end
 
 """
@@ -135,7 +145,8 @@ function BAGELS_2(lat, phi_start, phi_step, suffix="",outf="BAGELS.bmad", kick=1
   str_phi = @sprintf("%1.2e", phi_start) * "_" * @sprintf("%1.2e", phi_step)
   str_kick = @sprintf("%1.2e", kick)
 
-  coil_pairs = readdlm("$(path)/bumps$(str_phi).txt", ',')[:,1:2]
+  path = "$(path)/BAGELS_$(str_phi)"
+  coil_pairs = readdlm("$(path)/bumps.txt", ',')[:,1:2]
   eletypes = readdlm("$(path)/responses_$(str_kick)/baseline.txt", skipstart=2)[1:end-2,3]
   dn_dpz0 = readdlm("$(path)/responses_$(str_kick)/baseline.txt", skipstart=2)[1:end-2,6:8]
 
