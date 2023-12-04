@@ -250,7 +250,7 @@ function BAGELS_2(lat, phi_start, phi_step, N_knobs; suffix="", outf="BAGELS.bma
   end
 end
 
-function calc_refill_sensitivity(P_dk, tau_eq; P_0 = 0.85, T = 4.8)
+function calc_refill_sensitivity(P_dk, tau_eq; P_0 = 0.85, T = 4.8)::Float64
   P_dd = x -> (-P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x
   P_du = x -> (P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (-P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x
   P = T_du -> (P_dd((T_du.*T./(2 .*T_du.-T))) + P_du(T_du)).^2
@@ -261,7 +261,7 @@ function calc_refill_sensitivity(P_dk, tau_eq; P_0 = 0.85, T = 4.8)
   return P_du(T_du_t), T_du_t, T_dd_t
 end
 
-function calc_refill_time(P_dk, tau_eq; P_0 = 0.85, P_min_avg = 0.7)
+function calc_refill_time(P_dk, tau_eq; P_0 = 0.85, P_min_avg = 0.7)::Float64
   P_dd = x -> (-P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x .+ P_min_avg
   P_du = x -> (P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (-P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x .- P_min_avg
   T_dd = nlsolve(P_dd, 10. .*ones(length(P_dk))).zero
@@ -313,7 +313,7 @@ function pol_scan(lat, agamma0)
 
   # Calculate important quantities and store in metadata
   data = readdlm("$(path)/spin.dat", ';')[:,4]
-  data = Float64.(permutedims(reshape(data, (18,Int(length(data)/18)))))
+  data = permutedims(reshape(data, (18,Int(length(data)/18))))
   agamma0    = data[:,1]
   spin_tune  = data[:,2]
   P_st       = data[:,3]
