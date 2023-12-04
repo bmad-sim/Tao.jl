@@ -176,9 +176,6 @@ function BAGELS_2(lat, phi_start, phi_step, N_knobs; suffix="", outf="BAGELS.bma
   # Get first N_knobs principal directions
   V = F.V[:,1:N_knobs]
 
-  fmt = "%0$(length(string(N_knobs)))i"
-  @eval mysprintf(x) = @sprintf($fmt, x)
-
   # Create a group element with these as knobs  
   for i=1:N_knobs
     knob = V[:,i]
@@ -201,7 +198,8 @@ function BAGELS_2(lat, phi_start, phi_step, N_knobs; suffix="", outf="BAGELS.bma
     else
       knob_out = open(outf, "a")
     end
-    println(knob_out, "BAGELS$(suffix)$(mysprintf(i)): group = {")
+    
+    println(knob_out, "BAGELS$(suffix)$(Printf.format(Printf.Format("%0$(length(string(N_knobs)))i"), i)): group = {")
 
     for coil in unique_coils
       strength = 0.
