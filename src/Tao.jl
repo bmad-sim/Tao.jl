@@ -258,7 +258,7 @@ function calc_refill_sensitivity(P_dk, tau_eq; P_0 = 0.85, T = 4.8)
   T_du_t = nlsolve(P, 10. .*ones(length(P_dk))).zero
   T_dd_t = (T_du_t.*T./(2 .*T_du_t.-T))
   
-  return P_du(T_du), T_du_t, T_dd_t
+  return P_du(T_du_t), T_du_t, T_dd_t
 end
 
 function calc_refill_time(P_dk, tau_eq; P_0 = 0.85, P_min_avg = 0.7)
