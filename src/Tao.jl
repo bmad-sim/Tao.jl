@@ -3,13 +3,14 @@ using DelimitedFiles
 using LinearAlgebra
 using Printf
 using NLsolve
+using Interpolations
 
 export  metadata_path,
         PolData,
         BAGELS_1,
         BAGELS_2,
-        calc_refill_sensitivity,
-        calc_refill_time,
+        calc_P_t,
+        calc_T,
         pol_scan,
         get_pol_data
 
@@ -250,18 +251,59 @@ function BAGELS_2(lat, phi_start, phi_step, N_knobs; suffix="", outf="BAGELS.bma
   end
 end
 
-function calc_refill_sensitivity(P_dk, tau_eq; P_0 = 0.85, T = 4.8)
+
+"""
+    calc_P_t(P_dk, tau_eq; P_0 = 0.85, T = 4.8)
+
+Calculates the time-averaged e-polarization one could maintain in a lattice with 
+equal bunches parallel and antiparallel to the arc dipole fields, assuming an 
+average bunch replacement rate `T` and initial injected polarization `P_0`. Defaults 
+are values used in the ESR of the EIC (`P_0` = 85%, `T` = 4.8 min)
+
+### Input
+- `P_dk`   -- Array of DK polarizations
+- `tau_eq` -- Array of corresponding equilibrium times
+- `P_0`    -- (Optional) Initial bunch polarization at injection
+- `T`      -- (Optional) Average bunch replacement rate
+
+### Output
+- `P_t`    -- Time-averaged polarization maintainable in ring
+- `T_du_t` -- How often the antiparallel bunches need replacement
+- `T_dd_t` -- How often the parallel bunches need replacement
+"""
+function calc_P_t(P_dk, tau_eq; P_0 = 0.85, T = 4.8)
   P_dd = x -> (-P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x
   P_du = x -> (P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (-P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x
   P = T_du -> (P_dd((T_du.*T./(2 .*T_du.-T))) + P_du(T_du)).^2
 
   T_du_t = nlsolve(P, 10. .*ones(length(P_dk))).zero
   T_dd_t = (T_du_t.*T./(2 .*T_du_t.-T))
-  
-  return P_du(T_du_t), T_du_t, T_dd_t
+  P_t = P_du(T_du_t)
+
+  return P_t, T_du_t, T_dd_t
 end
 
-function calc_refill_time(P_dk, tau_eq; P_0 = 0.85, P_min_avg = 0.7)
+
+"""
+    calc_T(P_dk, tau_eq; P_0 = 0.85, P_min_avg = 0.7)
+
+Calculates how often the bunches would need to be replaced in a lattice with 
+equal bunches parallel and antiparallel to the arc dipole fields to maintain 
+a minimum time-averaged polarization of `P_min_avg` Defaults are values used 
+in the ESR of the EIC (P_0 = 85%, P_min_avg = 70%)
+
+### Input
+- `P_dk`      -- Array of DK polarizations
+- `tau_eq`    -- Array of corresponding equilibrium times
+- `P_0`       -- (Optional) Initial bunch polarization at injection
+- `P_min_avg` -- (Optional) Minimum-allowable time-averaged polarization
+
+### Output
+- `T`    -- Average bunch replacement time to maintain `P_min_avg`
+- `T_du` -- Antiparallel bunch replacement time to maintain `P_min_avg`
+- `T_dd` -- Parallel bunch replacement time to maintain `P_min_avg`
+"""
+function calc_T(P_dk, tau_eq; P_0 = 0.85, P_min_avg = 0.7)
   P_dd = x -> (-P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x .+ P_min_avg
   P_du = x -> (P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (-P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x .- P_min_avg
   T_dd = nlsolve(P_dd, 10. .*ones(length(P_dk))).zero
@@ -276,11 +318,12 @@ end
     pol_scan(lat, agamma0)
 
 Performs a polarization scan across the agamma0 range specified, calculates 
-important quantities and stores them for fast reference in the metadata.
+important quantities and stores them for fast reference in the metadata. 
+The data can be retrieved using the `get_pol_data` method.
 
 ### Input
 - `lat`      -- lat file name
-- `agamma0`  -- range of a*gamma_0 to scan over
+- `agamma0`  -- range of `agamma0` to scan over
 
 ### Output 
 - `pol_data` -- PolData struct containing polarization quantities for lattice
@@ -294,7 +337,7 @@ function pol_scan(lat, agamma0)
 
   # Generate tao command script
   tao_cmd = open("$(path)/spin.tao", "w")
-  a_e = 1.15965218e-3
+  a_e = 0.00115965218128
   m_e = 0.51099895e6
   println(tao_cmd, "set ele * spin_tracking_method = sprint")
   println(tao_cmd, "set bmad_com spin_tracking_on = T")
@@ -333,8 +376,8 @@ function pol_scan(lat, agamma0)
   tau_dep_2b = 1 ./data[:,17] ./ 60
   tau_dep_2c = 1 ./data[:,18] ./ 60
   tau_eq = (tau_dep.^-1+tau_bks.^-1).^-1
-  T, T_du, T_dd = calc_refill_time(P_dk,tau_eq)
-  P_t, T_du_t, T_dd_t = calc_refill_sensitivity(P_dk,tau_eq)
+  T, T_du, T_dd = calc_T(P_dk,tau_eq)
+  P_t, T_du_t, T_dd_t = calc_P_t(P_dk,tau_eq)
 
   pol_data = PolData( agamma0,
                       spin_tune,
@@ -427,9 +470,12 @@ function get_pol_data(lat)
     println("Lattice file $(lat) not found!")
     return
   end
-
+  if !isfile("$(path)/pol_data.dlm")
+    println("First-order polarization data not generated for lattice $(lattice). Please use the pol_scan method to generate the data.")
+  end
   pol_data_dlm = readdlm("$(path)/pol_data.dlm", ';')[:,2:end]
   
+
   return PolData( pol_data_dlm[1,:],
                   pol_data_dlm[2,:],
                   pol_data_dlm[3,:],
@@ -455,6 +501,48 @@ function get_pol_data(lat)
                   pol_data_dlm[23,:],
                   pol_data_dlm[24,:],
                   pol_data_dlm[25,:])
+end
+
+
+"""
+    pol_track_scan(lat, n_damp, data_ave="data.ave")
+
+Reads tracking data for the energies tracked in a `tracking` directory with 
+the lattice file, calculates important polarization quantities and stores them 
+for fast reference in the metadata. The data can then be retrieved using the 
+`get_pol_track_data` method. The `tracking` directory should contain subdirectories 
+with names equal to the `agamma0` and contain the turn-by-turn averages tracking 
+output from the `long_term_tracking` Bmad program. 
+
+### Input
+- `lat`            -- lat file name
+- `n_damp`         -- Number of turns where equilibrium emittances are reached
+- `data_ave`       -- (Optional) Averages output file name, default is `data.ave`
+
+### Output 
+- `pol_track_data` -- PolData struct containing polarization quantities for all tracked energies
+"""
+function pol_track_scan(lat, n_damp, data_ave="data.ave")
+  path = metadata_path(lat)
+  if path == ""
+    println("Lattice file $(lat) not found!")
+    return
+  end
+
+  # Use first-order P_st and tau_bks to calculate polarization data with nonlinear tau_dep
+  pol_data = get_pol_data(lat)
+  if isnothing(pol_data)
+    return 
+  end
+
+  # Tracking energies not particularly at linear evaluation energies, so interpolate
+  P_st_interp = linear_interpolation(pol_data.agamma0, pol_data.P_st)
+  tau_bks_interp = linear_interpolation(pol_data.agamma0, pol_data.tau_bks)
+  
+  subdirs = readdir("$(tracking)")
+  energies = subdirs[isdir.(subdirs, join=true))]
+
+
 end
 
 end
