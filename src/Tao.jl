@@ -313,7 +313,7 @@ function pol_scan(lat, agamma0)
 
   # Calculate important quantities and store in metadata
   data = readdlm("$(path)/spin.dat", ';')[:,4]
-  data = permutedims(reshape(data, (18,Int(length(data)/18))))
+  data = Float64.(permutedims(reshape(data, (18,Int(length(data)/18)))))
   agamma0    = data[:,1]
   spin_tune  = data[:,2]
   P_st       = data[:,3]
