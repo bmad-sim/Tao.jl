@@ -554,7 +554,7 @@ function track_3rd_order_map(lat, n_particles, n_turns)
                 set -x
                 p1=\$(pwd)
                 p3=\$(basename \$PWD)
-                qsub -q all.q -pe sge_pe 32 -N ${p3//./} -o ${p1}/out.txt -e ${p1}/err.txt -hold_jid $(qsub -terse -q all.q -pe sge_pe 1 -N ${p3//./} -o ${p1}/out.txt -e ${p1}/err.txt ${p1}/run1.sh ${p1}) ${p1}/run32.sh ${p1}
+                qsub -q all.q -pe sge_pe 32 -N \${p3//./} -o \${p1}/out.txt -e \${p1}/err.txt -hold_jid \$(qsub -terse -q all.q -pe sge_pe 1 -N \${p3//./} -o \${p1}/out.txt -e \${p1}/err.txt \${p1}/run1.sh \${p1}) \${p1}/run32.sh \${p1}
               """
   # We need to get the equilibrium emittances to start the tracking with those:
   run(`tao -lat $lat -noplot -command "show -write $(path)/uni.txt uni ; exit"`)
