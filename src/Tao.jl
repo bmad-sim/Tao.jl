@@ -13,7 +13,7 @@ export  data_path,
         calc_T,
         pol_scan,
         get_pol_data,
-        track_3rd_order_map 
+        run_3rd_order_map_tracking 
 
 # Returns empty string if lattice not found
 function data_path(lat)
@@ -506,7 +506,7 @@ end
 
 
 """
-    track_3rd_order_map(lat, n_particles, n_turns)
+  run_3rd_order_map_tracking(lat, n_particles, n_turns)
 
 NOTE: THIS FUNCTION ONLY WORKS WHEN LOGGED INTO A COMPUTER ON THE CLASSE VPN!
 This routine sets up 3rd order map tracking with the bends split for radiation, 
@@ -528,18 +528,20 @@ ln -s trackings_jl ~/trackings_jl
 This must be done because storage is limited in the users' home directory, but not 
 in /nfs/acc/user/<NetID>
 """
-function track_3rd_order_map(lat, n_particles, n_turns)
+function run_3rd_order_map_tracking(lat, n_particles, n_turns)
   path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
     return
   end
   
-  mkdir("$(path)/tracking")
+  if !isdir("$(path)/tracking")
+    mkdir("$(path)/tracking")
+  end
   
 
   # In the tracking directory, we must create the long_term_tracking.init, run.sh, and qtrack.sh, 
-  # which will then be rsynced to the equivalent directory on the remote machine. On the remote 
+  # which will then be scp-ed to the equivalent directory on the remote machine. On the remote 
   # machine, tracking info is stored in ~/trackings_jl/, where the full path to the lattice on 
   # this machine will be written and the tracking folder dropped there.
 
@@ -659,6 +661,20 @@ function track_3rd_order_map(lat, n_particles, n_turns)
   run(`ssh lnx4200 "cd $(remote_path); sh qtrack.sh"`)
 end
 
+
+"""
+    run_pol_scan_3rd_order(lat, n_particles, n_turns, agamma0)
+
+IMPORTANT: Please follow the setup instructions in the `run_3rd_order_map_tracking`
+documentation before running this routine.
+
+This routine sets up and submits the parallel 3rd order map tracking 
+jobs to the CLASSE cluster for the range of `agamma0` specified. 
+"""
+function run_pol_scan_3rd_order(lat, n_particles, n_turns, agamma0)
+  
+
+end
 
 """
     pol_track_scan(lat, n_damp, data_ave="data.ave")
