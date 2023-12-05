@@ -530,9 +530,16 @@ function track_3rd_order_map(lat, n_particles, n_turns, n_threads)
     println("Lattice file $(lat) not found!")
     return
   end
-  if !isdir("$(path)/tracking")
+  first = true
+  if isdir("$(path)/tracking")
+    # Tracking directory already exists at $(path)/tracking, meaning that a map")
+    # has already been generated on the host. The lattice file will therefore not be ")
+    # copied over to the host.")
+    first = false
+  else
     mkdir("$(path)/tracking")
   end
+  
 
   # In the tracking directory, we must create the long_term_tracking.init, run.sh, and qtrack.sh, 
   # which will then be rsynced to the equivalent directory on the remote machine. On the remote 
@@ -551,7 +558,10 @@ function track_3rd_order_map(lat, n_particles, n_turns, n_threads)
                 qsub -q all.q -pe sge_pe $(n_threads) -N a\${p3//./} -o \${p1}/out.txt -e \${p1}/err.txt \${p1}/run.sh \${p1}
               """
   # We need to get the equilibrium emittances to start the tracking with those:
-  run(`tao -lat $lat -noplot -command "show -write $(path)/uni.txt uni ; exit"`)
+  if first
+    run(`tao -lat $lat -noplot -command "show -write $(path)/uni.txt uni ; exit"`)
+  end
+  
   uni = readdlm("$(path)/uni.txt")
   emit_a = uni[26,3]
   emit_b = uni[26,5]
@@ -605,7 +615,11 @@ function track_3rd_order_map(lat, n_particles, n_turns, n_threads)
 
   # Copy files over
   run(`scp -r $(path)/tracking/. lnx4200:$(remote_path)`)
-  run(`scp -r $(lat) lnx4200:$(remote_path)`)
+
+  # ONLY COPY THE LATTICE IF THIS IS FIRST TIME!
+  if first
+    run(`scp -r $(lat) lnx4200:$(remote_path)`)
+  end
   # Submit the tracking on host
   run(`ssh lnx4200 "cd $(remote_path); sh qtrack.sh"`)
 end
