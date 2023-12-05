@@ -507,11 +507,24 @@ end
 """
     track_3rd_order_map(lat, n_particles, n_turns, n_threads)
 
-This function only works when logged in to a computer on the CLASSE VPN. 
+NOTE: THIS METHOD ONLY WORKS WHEN LOGGED INTO A COMPUTER ON THE CLASSE VPN!
+This method sets up 3rd order map tracking with the bends split for radiation, 
+starting the distribution with the equilibrium emittances of the lattice. The 
+job is then submitted to the CLASSE cluster for parallel evaluation and stored 
+in a directory on the CLASSE machine in ~/trackings_jl/.
 
+IMPORTANT: Before first running this function, a softlink should be set up in a 
+user's home directory on the CLASSE machine that points to the user's directory 
+/nfs/acc/user/<NetID>. E.g.,
 
+cd /nfs/acc/user/<NetID>
+mkdir trackings_jl
+ln -s trackings_jl ~/trackings_jl
+
+This must be done because storage is limited in the users' home directory, but not 
+in /nfs/acc/user/<NetID>
 """
-function track_3rd_order_map(lat, n_particles, n_turns, n_threads, username)
+function track_3rd_order_map(lat, n_particles, n_turns, n_threads)
   path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
@@ -528,19 +541,23 @@ function track_3rd_order_map(lat, n_particles, n_turns, n_threads, username)
 
   run_sh =    """
                 cd \$1
-                mpirun -np $(n_threads) long_term_tracking_mpi long_term_tracking.init
+                mpirun -np $(n_threads) /home/mgs255/mgs255/master/production/bin/long_term_tracking_mpi long_term_tracking.init
               """
   qtrack_sh = """
                 set -x
                 p1=\$(pwd)
                 p3=\$(basename \$PWD)
-                #com="\${p1}/run.sh0 \${p1}"
-                qsub -q all.q -pe sge_pe 32 -N a\${p3//./} -o \${p1}/out.txt -e \${p1}/err.txt \${p1}/run.sh \${p1}
+                #com="\${p1}/run.sh \${p1}"
+                qsub -q all.q -pe sge_pe $(n_threads) -N a\${p3//./} -o \${p1}/out.txt -e \${p1}/err.txt \${p1}/run.sh \${p1}
               """
   # We need to get the equilibrium emittances to start the tracking with those:
   run(`tao -lat $lat -noplot -command "show -write $(path)/uni.txt uni ; exit"`)
+  uni = readdlm("$(path)/uni.txt")
+  emit_a = uni[26,3]
+  emit_b = uni[26,5]
+  sig_z = uni[33,3]
+  sig_pz = uni[32,3]
 
-  
   long_term_tracking_init = """
                             &params
                             ltt%lat_file = '$(lat)'         ! Lattice file
@@ -569,16 +586,28 @@ function track_3rd_order_map(lat, n_particles, n_turns, n_threads, username)
                             bmad_com%radiation_fluctuations_on = T
 
                             beam_init%n_particle =  $(n_particles)
-                            beam_init%spin = 0, 0, 0     
+                            beam_init%spin = 0, 0, 0
+
+                            beam_init%a_emit = $(emit_a)
+                            beam_init%b_emit = $(emit_b)  
+                            beam_init%sig_z = $(sig_z)
+                            beam_init%sig_pz = $(sig_pz)
+                            /
                             """
 
-  remote_path = "~/trackings_jl" * pwd() * path
+  remote_path = "~/trackings_jl" * pwd() * "/" * path
   write("$(path)/tracking/run.sh", run_sh)
-  write("$(path)/tracking/qtrack.sh", run_sh)
-
+  write("$(path)/tracking/qtrack.sh", qtrack_sh)
+  write("$(path)/tracking/long_term_tracking.init", long_term_tracking_init)
   
+  # Create directories on host
+  run(`ssh lnx4200 "mkdir -p $(remote_path)"`)
 
-
+  # Copy files over
+  run(`scp -r $(path)/tracking/. lnx4200:$(remote_path)`)
+  run(`scp -r $(lat) lnx4200:$(remote_path)`)
+  # Submit the tracking on host
+  run(`ssh lnx4200 "cd $(remote_path); sh qtrack.sh"`)
 end
 
 
