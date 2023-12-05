@@ -511,7 +511,7 @@ This function only works when logged in to a computer on the CLASSE VPN.
 
 
 """
-function track_3rd_order_map(lat, n_particles, n_turns, n_threads. username)
+function track_3rd_order_map(lat, n_particles, n_turns, n_threads, username)
   path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
