@@ -527,15 +527,15 @@ function track_3rd_order_map(lat, n_particles, n_turns, n_threads. username)
   # this machine will be written and the tracking folder dropped there.
 
   run_sh =    """
-                cd $1
+                cd \$1
                 mpirun -np $(n_threads) long_term_tracking_mpi long_term_tracking.init
               """
   qtrack_sh = """
                 set -x
                 p1=\$(pwd)
                 p3=\$(basename \$PWD)
-                #com="${p1}/run.sh ${p1}"
-                qsub -q all.q -pe sge_pe 32 -N a${p3//./} -o ${p1}/out.txt -e ${p1}/err.txt ${p1}/run.sh ${p1}
+                #com="\${p1}/run.sh0 \${p1}"
+                qsub -q all.q -pe sge_pe 32 -N a\${p3//./} -o \${p1}/out.txt -e \${p1}/err.txt \${p1}/run.sh \${p1}
               """
   # We need to get the equilibrium emittances to start the tracking with those:
   run(`tao -lat $lat -noplot -command "show -write $(path)/uni.txt uni ; exit"`)
