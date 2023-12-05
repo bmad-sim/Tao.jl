@@ -12,7 +12,8 @@ export  data_path,
         calc_P_t,
         calc_T,
         pol_scan,
-        get_pol_data
+        get_pol_data,
+        track_3rd_order_map 
 
 # Returns empty string if lattice not found
 function data_path(lat)
