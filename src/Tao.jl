@@ -5,7 +5,7 @@ using Printf
 using NLsolve
 using Interpolations
 
-export  metadata_path,
+export  data_path,
         PolData,
         BAGELS_1,
         BAGELS_2,
@@ -15,9 +15,9 @@ export  metadata_path,
         get_pol_data
 
 # Returns empty string if lattice not found
-function metadata_path(lat)
-  if isfile(pwd() * "/$(lat)")
-    path = homedir() * "/.tao_jl" * pwd()[length(homedir())+1:end] * "/" * lat
+function data_path(lat)
+  if isfile(lat)
+    path = lat * "_tao_jl"
     if !ispath(path)
       mkpath(path)
     end
@@ -80,7 +80,7 @@ the sign of the first kick times the sign of the second kick. E.g., for only pi-
 - `tol`       -- (Optional) Tolerance for difference in phase, default is 1e-8
 """
 function BAGELS_1(lat, phi_start, phi_step, sgn, kick=1e-5, tol=1e-8)
-  path = metadata_path(lat)
+  path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
     return
@@ -88,7 +88,7 @@ function BAGELS_1(lat, phi_start, phi_step, sgn, kick=1e-5, tol=1e-8)
   str_phi = @sprintf("%1.2e", phi_start) * "_" * @sprintf("%1.2e", phi_step)
   str_kick = @sprintf("%1.2e", kick)
 
-  # Generate directory in lattice metadata path for these phi_start and phi_step
+  # Generate directory in lattice data path for these phi_start and phi_step
   if !isdir("$(path)/BAGELS_$(str_phi)")
     mkdir("$(path)/BAGELS_$(str_phi)")
   end
@@ -178,7 +178,7 @@ E.g., for only pi-bumps, use `phi_start` = pi, `phi_step` = (something large), a
 - `kick`      -- (Optional) Coil kick, default is 1e-5
 """
 function BAGELS_2(lat, phi_start, phi_step, N_knobs; suffix="", outf="BAGELS.bmad", kick=1e-5)
-  path = metadata_path(lat)
+  path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
     return
@@ -318,7 +318,7 @@ end
     pol_scan(lat, agamma0)
 
 Performs a polarization scan across the agamma0 range specified, calculates 
-important quantities and stores them for fast reference in the metadata. 
+important quantities and stores them for fast reference in the data. 
 The data can be retrieved using the `get_pol_data` method.
 
 ### Input
@@ -329,7 +329,7 @@ The data can be retrieved using the `get_pol_data` method.
 - `pol_data` -- PolData struct containing polarization quantities for lattice
 """
 function pol_scan(lat, agamma0)
-  path = metadata_path(lat)
+  path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
     return
@@ -354,7 +354,7 @@ function pol_scan(lat, agamma0)
   # Execute the scan
   run(`tao -lat $lat -noplot -command "call $(path)/spin.tao"`)
 
-  # Calculate important quantities and store in metadata
+  # Calculate important quantities and store in data
   data = readdlm("$(path)/spin.dat", ';')[:,4]
   data = permutedims(reshape(data, (18,Int(length(data)/18))))
   agamma0    = data[:,1]
@@ -465,7 +465,7 @@ end
 Gets the polarization data for the specified lattice.
 """
 function get_pol_data(lat)
-  path = metadata_path(lat)
+  path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
     return
@@ -505,11 +505,89 @@ end
 
 
 """
-    pol_track_scan(lat, n_damp, data_ave="data.ave")
+    track_3rd_order_map(lat, n_particles, n_turns, n_threads)
 
+This function only works when logged in to a computer on the CLASSE VPN. 
+
+
+"""
+function track_3rd_order_map(lat, n_particles, n_turns, n_threads. username)
+  path = data_path(lat)
+  if path == ""
+    println("Lattice file $(lat) not found!")
+    return
+  end
+  if !isdir("$(path)/tracking")
+    mkdir("$(path)/tracking")
+  end
+
+  # In the tracking directory, we must create the long_term_tracking.init, run.sh, and qtrack.sh, 
+  # which will then be rsynced to the equivalent directory on the remote machine. On the remote 
+  # machine, tracking info is stored in ~/trackings_jl/, where the full path to the lattice on 
+  # this machine will be written and the tracking folder dropped there.
+
+  run_sh =    """
+                cd $1
+                mpirun -np $(n_threads) long_term_tracking_mpi long_term_tracking.init
+              """
+  qtrack_sh = """
+                set -x
+                p1=\$(pwd)
+                p3=\$(basename \$PWD)
+                #com="${p1}/run.sh ${p1}"
+                qsub -q all.q -pe sge_pe 32 -N a${p3//./} -o ${p1}/out.txt -e ${p1}/err.txt ${p1}/run.sh ${p1}
+              """
+  # We need to get the equilibrium emittances to start the tracking with those:
+  run(`tao -lat $lat -noplot -command "show -write $(path)/uni.txt uni ; exit"`)
+
+  
+  long_term_tracking_init = """
+                            &params
+                            ltt%lat_file = '$(lat)'         ! Lattice file
+                            ltt%ele_start = '0'                   ! Where to start in the lattice
+                            ltt%ele_stop = ''                     
+
+                            ltt%averages_output_file = 'data'
+                            ltt%beam_binary_output_file = ''
+                            ltt%sigma_matrix_output_file = ''
+                            ltt%averages_output_every_n_turns = 1
+                            ltt%averaging_window = 1
+                            ltt%core_emit_cutoff = 1,0.95,0.9,0.85,0.80,0.78,0.76,0.74,0.72,0.70,0.68,0.66,0.64,0.62,0.60,0.58,0.56,0.54,0.52,0.50,0.48,0.46,0.42,0.40,0.35,0.3,0.25,0.2,0.15,0.1
+
+                            ltt%simulation_mode = 'BEAM'
+                            ltt%tracking_method = 'MAP'   !
+                            ltt%n_turns = $(n_turns)                 ! Number of turns to track
+                            ltt%rfcavity_on = T
+                            ltt%map_order = 3 ! increase see effects
+                            ltt%split_bends_for_stochastic_rad = T ! for map tracking = T
+                            ltt%random_seed = 1                     ! Random number seed. 0 => use system clock.
+                            ltt%timer_print_dtime = 300
+                            ltt%add_closed_orbit_to_init_position = T
+
+                            bmad_com%spin_tracking_on = T         ! See Bmad manual for bmad_com parameters.
+                            bmad_com%radiation_damping_on = T
+                            bmad_com%radiation_fluctuations_on = T
+
+                            beam_init%n_particle =  $(n_particles)
+                            beam_init%spin = 0, 0, 0     
+                            """
+
+  remote_path = "~/trackings_jl" * pwd() * path
+  write("$(path)/tracking/run.sh", run_sh)
+  write("$(path)/tracking/qtrack.sh", run_sh)
+
+  
+
+
+end
+
+
+"""
+    pol_track_scan(lat, n_damp, data_ave="data.ave")
+INCOMPLETE
 Reads tracking data for the energies tracked in a `tracking` directory with 
 the lattice file, calculates important polarization quantities and stores them 
-for fast reference in the metadata. The data can then be retrieved using the 
+for fast reference in the data. The data can then be retrieved using the 
 `get_pol_track_data` method. The `tracking` directory should contain subdirectories 
 with names equal to the `agamma0` and contain the turn-by-turn averages tracking 
 output from the `long_term_tracking` Bmad program. 
@@ -523,7 +601,7 @@ output from the `long_term_tracking` Bmad program.
 - `pol_track_data` -- PolData struct containing polarization quantities for all tracked energies
 """
 function pol_track_scan(lat, n_damp, data_ave="data.ave")
-  path = metadata_path(lat)
+  path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
     return
@@ -540,9 +618,7 @@ function pol_track_scan(lat, n_damp, data_ave="data.ave")
   tau_bks_interp = linear_interpolation(pol_data.agamma0, pol_data.tau_bks)
   
   subdirs = readdir("$(tracking)")
-  energies = subdirs[isdir.(subdirs, join=true))]
-
-
+  agamma0_track = subdirs[isdir.(subdirs, join=true)]
 end
 
 end
