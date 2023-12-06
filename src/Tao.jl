@@ -4,6 +4,7 @@ using LinearAlgebra
 using Printf
 using NLsolve
 using Interpolations
+using DataFrames, StatsBase, GLM
 
 export  data_path,
         PolData,
@@ -36,31 +37,51 @@ for a lattice.
 
 """
 struct PolData
-  agamma0 #::Float64
-  spin_tune #::Float64
-  P_st  #::Float64
-  P_dk  #::Float64
-  P_dk_a  #::Float64
-  P_dk_b  #::Float64
-  P_dk_c  #::Float64
-  P_dk_2a #::Float64
-  P_dk_2b #::Float64
-  P_dk_2c #::Float64
-  tau_bks #::Float64
-  tau_dep #::Float64
-  tau_dep_a #::Float64
-  tau_dep_b #::Float64
-  tau_dep_c #::Float64
-  tau_dep_2a  #::Float64
-  tau_dep_2b  #::Float64
-  tau_dep_2c  #::Float64
-  tau_eq  #::Float64
-  T #::Float64
-  T_du  #::Float64
-  T_dd  #::Float64
-  P_t #::Float64
-  T_du_t  #::Float64
-  T_dd_t  #::Float64
+  agamma0
+  spin_tune
+  P_st 
+  P_dk 
+  P_dk_a 
+  P_dk_b 
+  P_dk_c 
+  P_dk_2a
+  P_dk_2b
+  P_dk_2c
+  tau_bks
+  tau_dep
+  tau_dep_a
+  tau_dep_b
+  tau_dep_c
+  tau_dep_2a 
+  tau_dep_2b 
+  tau_dep_2c 
+  tau_eq 
+  T
+  T_du 
+  T_dd 
+  P_t
+  T_du_t 
+  T_dd_t 
+end
+
+"""
+Structure to store important polarization quantities calculated 
+from tracking (so nonlinear tau_dep) for a lattice.
+
+"""
+struct PolTrackData
+  agamma0
+  P_st
+  P_dk
+  tau_bks
+  tau_dep
+  tau_eq
+  T
+  T_du 
+  T_dd 
+  P_t
+  T_du_t 
+  T_dd_t 
 end
 
 """
@@ -431,31 +452,31 @@ function pol_scan(lat, agamma0)
           "P_t",
           "T_du_t",
           "T_dd_t"]
-  pol_data_dlm = hcat(names, permutedims(hcat(agamma0,
-                                  spin_tune,
-                                  P_st,
-                                  P_dk,
-                                  P_dk_a,
-                                  P_dk_b,
-                                  P_dk_c,
-                                  P_dk_2a,
-                                  P_dk_2b,
-                                  P_dk_2c,
-                                  tau_bks,
-                                  tau_dep,
-                                  tau_dep_a,
-                                  tau_dep_b,
-                                  tau_dep_c,
-                                  tau_dep_2a,
-                                  tau_dep_2b,
-                                  tau_dep_2c,
-                                  tau_eq,
-                                  T,
-                                  T_du,
-                                  T_dd,
-                                  P_t,
-                                  T_du_t,
-                                  T_dd_t)))
+  pol_data_dlm = permute_dims(hcat(names, permutedims(hcat(agamma0,
+                                                            spin_tune,
+                                                            P_st,
+                                                            P_dk,
+                                                            P_dk_a,
+                                                            P_dk_b,
+                                                            P_dk_c,
+                                                            P_dk_2a,
+                                                            P_dk_2b,
+                                                            P_dk_2c,
+                                                            tau_bks,
+                                                            tau_dep,
+                                                            tau_dep_a,
+                                                            tau_dep_b,
+                                                            tau_dep_c,
+                                                            tau_dep_2a,
+                                                            tau_dep_2b,
+                                                            tau_dep_2c,
+                                                            tau_eq,
+                                                            T,
+                                                            T_du,
+                                                            T_dd,
+                                                            P_t,
+                                                            T_du_t,
+                                                            T_dd_t))))
   writedlm("$(path)/pol_data.dlm", pol_data_dlm, ';')
   return pol_data
 end
@@ -475,34 +496,34 @@ function get_pol_data(lat)
   if !isfile("$(path)/pol_data.dlm")
     println("First-order polarization data not generated for lattice $(lattice). Please use the pol_scan method to generate the data.")
   end
-  pol_data_dlm = readdlm("$(path)/pol_data.dlm", ';')[:,2:end]
+  pol_data_dlm = readdlm("$(path)/pol_data.dlm", ';')[2:end,:]
   
 
-  return PolData( pol_data_dlm[1,:],
-                  pol_data_dlm[2,:],
-                  pol_data_dlm[3,:],
-                  pol_data_dlm[4,:],
-                  pol_data_dlm[5,:],
-                  pol_data_dlm[6,:],
-                  pol_data_dlm[7,:],
-                  pol_data_dlm[8,:],
-                  pol_data_dlm[9,:],
-                  pol_data_dlm[10,:],
-                  pol_data_dlm[11,:],
-                  pol_data_dlm[12,:],
-                  pol_data_dlm[13,:],
-                  pol_data_dlm[14,:],
-                  pol_data_dlm[15,:],
-                  pol_data_dlm[16,:],
-                  pol_data_dlm[17,:],
-                  pol_data_dlm[18,:],
-                  pol_data_dlm[19,:],
-                  pol_data_dlm[20,:],
-                  pol_data_dlm[21,:],
-                  pol_data_dlm[22,:],
-                  pol_data_dlm[23,:],
-                  pol_data_dlm[24,:],
-                  pol_data_dlm[25,:])
+  return PolData( pol_data_dlm[:,1],
+                  pol_data_dlm[:,2],
+                  pol_data_dlm[:,3],
+                  pol_data_dlm[:,4],
+                  pol_data_dlm[:,5],
+                  pol_data_dlm[:,6],
+                  pol_data_dlm[:,7],
+                  pol_data_dlm[:,8],
+                  pol_data_dlm[:,9],
+                  pol_data_dlm[:,10],
+                  pol_data_dlm[:,11],
+                  pol_data_dlm[:,12],
+                  pol_data_dlm[:,13],
+                  pol_data_dlm[:,14],
+                  pol_data_dlm[:,15],
+                  pol_data_dlm[:,16],
+                  pol_data_dlm[:,17],
+                  pol_data_dlm[:,18],
+                  pol_data_dlm[:,19],
+                  pol_data_dlm[:,20],
+                  pol_data_dlm[:,21],
+                  pol_data_dlm[:,22],
+                  pol_data_dlm[:,23],
+                  pol_data_dlm[:,24],
+                  pol_data_dlm[:,25])
 end
 
 
@@ -530,13 +551,12 @@ This must be done because storage is limited in the users' home directory, but n
 in /nfs/acc/user/<NetID>
 """
 function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=true)
-  path = data_path(lat)
-  if path == ""
-    println("Lattice file $(lat) not found!")
-    return
-  end
-
   if (use_data_path)
+    path = data_path(lat)
+    if path == ""
+      println("Lattice file $(lat) not found!")
+      return
+    end
     track_path = "$(path)/3rd_order_map"
     if !ispath(track_path)
       mkpath(track_path)
@@ -568,6 +588,7 @@ function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=tru
                 p3=\$(basename \$PWD)
                 qsub -q all.q -pe sge_pe 32 -N $(replace(basename(lat), "."=>"_") * "_32") -o \${p1}/out.txt -e \${p1}/err.txt -hold_jid \$(qsub -terse -q all.q -pe sge_pe 1 -N $(replace(basename(lat), "."=>"_") * "_1") -o \${p1}/out.txt -e \${p1}/err.txt \${p1}/run1.sh \${p1}) \${p1}/run32.sh \${p1}
               """
+  #= No longer necessary - use negative value for equilibrium emittance
   # We need to get the equilibrium emittances to start the tracking with those:
   run(`tao -lat $lat -noplot -command "show -write $(path)/uni.txt uni ; exit"`)
   
@@ -576,7 +597,7 @@ function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=tru
   emit_b = uni[26,5]
   sig_z = uni[33,3]
   sig_pz = uni[32,3]
-
+  =#
   long_term_tracking1_init = """
                             &params
                             ltt%lat_file = '$(basename(lat))'         ! Lattice file
@@ -607,10 +628,10 @@ function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=tru
                             beam_init%n_particle =  1
                             beam_init%spin = 0, 0, 0
 
-                            beam_init%a_emit = $(emit_a)
-                            beam_init%b_emit = $(emit_b)  
-                            beam_init%sig_z = $(sig_z)
-                            beam_init%sig_pz = $(sig_pz)
+                            beam_init%a_emit = -1.
+                            beam_init%b_emit = -1.
+                            beam_init%sig_z = -1.
+                            beam_init%sig_pz = -1. 
                             /
                             """
 
@@ -644,10 +665,10 @@ function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=tru
                             beam_init%n_particle =  $(n_particles)
                             beam_init%spin = 0, 0, 0
 
-                            beam_init%a_emit = $(emit_a)
-                            beam_init%b_emit = $(emit_b)  
-                            beam_init%sig_z = $(sig_z)
-                            beam_init%sig_pz = $(sig_pz)
+                            beam_init%a_emit = -1.
+                            beam_init%b_emit = -1.
+                            beam_init%sig_z = -1.
+                            beam_init%sig_pz = -1. 
                             /
                             """
 
@@ -660,8 +681,8 @@ function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=tru
   
   # Create directories on host:
   run(`ssh lnx4200 "mkdir -p $(remote_path)"`)
-  # Copy lattice file:
-  run(`scp -r $(lat) lnx4200:$(remote_path)`)
+  # Copy lattice file (use rsync so it remains unchanged if the files are equivalent)
+  run(`rsync $(lat) lnx4200:$(remote_path)`)
   # Copy files over:
   run(`scp -r $(track_path)/. lnx4200:$(remote_path)`)
 
@@ -692,7 +713,7 @@ function run_pol_scan_3rd_order(lat, n_particles, n_turns, agamma0)
   end
 
   # Create subdirectories with name equal to agamma0
-  for i=1:length(agamma0)
+  for i in eachindex(agamma0)
     subdirname = Printf.format(Printf.Format("%0$(length(string(floor(maximum(agamma0))))).2f"), agamma0[i])
     mkpath("$(path)/3rd_order_map/$(subdirname)")
     cp(lat,"$(path)/3rd_order_map/$(subdirname)/$(lat)_$(subdirname)")
@@ -704,6 +725,110 @@ function run_pol_scan_3rd_order(lat, n_particles, n_turns, agamma0)
     run_3rd_order_map_tracking(temp_lat, n_particles, n_turns; use_data_path=false)
   end
 end
+
+
+"""
+    read_pol_scan_3rd_order(lat, n_damp)
+
+This routine reads the results of run_pol_scan_3rd_order from the CLASSE 
+computer and creates a PolTrackData for this lattice.
+"""
+function read_pol_scan_3rd_order(lat, n_damp)
+  path = data_path(lat)
+  if path == ""
+    println("Lattice file $(lat) not found!")
+    return
+  end    
+  
+  track_path = "$(path)/3rd_order_map"
+  if !ispath(track_path)
+    mkpath(track_path)
+  end
+  remote_path = "~/trackings_jl" * track_path
+  run(`ssh lnx4200 "cd $(remote_path); find . -name "data.ave" -o -name "data.emit" -o -name "data.sigma" | find  -name "data.ave" -o -name "data.emit" -o -name "data.sigma" | tar -czvf data.tar.gz -T -"`)
+  run(`scp lnx4200:$(remote_path)/data.tar.gz $(track_path)`)
+  run(`tar -xzvf $(track_path)/data.tar.gz -C $(track_path)`)
+
+  # Get the tracking subdirs
+  subdirs = filter(isdir, readdir(track_path, join=true))
+
+  # Get tracking agamma0
+  agamma0 = [readdlm(subdir * "/data.ave")[findfirst(x->x=="anom_moment_times_gamma", readdlm(subdir * "/data.ave")) + CartesianIndex(0,2)] for subdir in subdirs]
+
+  # Now calculate the PolTrackData for this lattice
+  # Use first-order P_st and tau_bks to calculate polarization data with nonlinear tau_dep
+  pol_data = get_pol_data(lat)
+  if isnothing(pol_data)
+    # First order scan has not been performed - must be performed
+    # Use the agamma0 we have above
+    println("First order polarization data not found - performing scan with tracking agamma0...")
+    pol_data = pol_scan(lat, agamma0)
+  end
+
+  # Tracking energies not particularly at linear evaluation energies, so interpolate
+  P_st_interp = linear_interpolation(pol_data.agamma0, pol_data.P_st)
+  tau_bks_interp = linear_interpolation(pol_data.agamma0, pol_data.tau_bks)
+
+  tau_dep = Float64[]
+  for subdir in subdirs
+    data_ave = readdlm(subdir * "/data.ave")
+    row_start = findlast(x->occursin("#",string(x)), data_ave[:,1])[1] + 1
+    t = data_ave[row_start+n_damp:end,3]
+    P = data_ave[row_start+n_damp:end,4]
+    # Linear regression to get depol time
+    data = DataFrame(X=t, Y=P)
+    tau_dep_track = -coef(lm(@formula(Y ~ X), data))[2]^-1/60
+    push!(tau_dep, tau_dep_track)
+  end
+
+
+  P_st = P_st_interp.(agamma0)
+  tau_bks = tau_bks_interp.(agamma0)
+  tau_eq = (tau_dep.^-1+tau_bks.^-1).^-1
+  P_dk = P_st.*tau_bks.^-1 ./(tau_bks.^-1 .+tau_dep.^-1)
+  T, T_du, T_dd = calc_T(P_dk,tau_eq)
+  P_t, T_du_t, T_dd_t = calc_P_t(P_dk,tau_eq)
+  pol_track_data = PolTrackData(agamma0,
+                                P_st,
+                                P_dk,
+                                tau_bks,
+                                tau_dep,
+                                tau_eq,
+                                T,
+                                T_du,
+                                T_dd,
+                                P_t,
+                                T_du_t,
+                                T_dd_t)
+  names =["agamma0",
+          "P_st",
+          "P_dk",
+          "tau_bks",
+          "tau_dep",
+          "tau_eq",
+          "T",
+          "T_du",
+          "T_dd",
+          "P_t",
+          "T_du_t",
+          "T_dd_t"]
+  pol_track_data_dlm = permute_dims(hcat(names, permutedims(hcat(agamma0,
+                                                                  P_st,
+                                                                  P_dk,
+                                                                  tau_bks,
+                                                                  tau_dep,
+                                                                  tau_eq,
+                                                                  T,
+                                                                  T_du,
+                                                                  T_dd,
+                                                                  P_t,
+                                                                  T_du_t,
+                                                                  T_dd_t))))
+  writedlm("$(path)/pol_track_data.dlm", pol_track_data_dlm, ';')
+
+  return pol_track_data
+end
+
 
 """
     pol_track_scan(lat, n_damp, data_ave="data.ave")
