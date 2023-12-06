@@ -650,7 +650,7 @@ function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=tru
                             /
                             """
 
-  remote_path = "~/trackings_jl" * $(track_path)
+  remote_path = "~/trackings_jl" * track_path
   write("$(track_path)/run1.sh", run1_sh)
   write("$(track_path)/run32.sh", run32_sh)
   write("$(track_path)/qtrack.sh", qtrack_sh)
