@@ -454,7 +454,7 @@ function pol_scan(lat, agamma0)
           "P_t",
           "T_du_t",
           "T_dd_t"]
-  pol_data_dlm = permute_dims(hcat(names, permutedims(hcat(agamma0,
+  pol_data_dlm = permutedims(hcat(names, permutedims(hcat(agamma0,
                                                             spin_tune,
                                                             P_st,
                                                             P_dk,
@@ -818,7 +818,7 @@ function read_pol_scan_3rd_order(lat, n_damp)
           "P_t",
           "T_du_t",
           "T_dd_t"]
-  pol_track_data_dlm = permute_dims(hcat(names, permutedims(hcat(agamma0,
+  pol_track_data_dlm = permutedims(hcat(names, permutedims(hcat(agamma0,
                                                                   P_st,
                                                                   P_dk,
                                                                   tau_bks,
