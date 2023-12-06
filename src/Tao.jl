@@ -579,7 +579,7 @@ function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=tru
 
   long_term_tracking1_init = """
                             &params
-                            ltt%lat_file = '$(lat)'         ! Lattice file
+                            ltt%lat_file = '$(basename(lat))'         ! Lattice file
                             ltt%ele_start = '0'                   ! Where to start in the lattice
                             ltt%ele_stop = ''                     
 
@@ -616,7 +616,7 @@ function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=tru
 
   long_term_tracking_init = """
                             &params
-                            ltt%lat_file = '$(lat)'         ! Lattice file
+                            ltt%lat_file = '$(basename(lat))'         ! Lattice file
                             ltt%ele_start = '0'                   ! Where to start in the lattice
                             ltt%ele_stop = ''                     
 
@@ -698,7 +698,7 @@ function run_pol_scan_3rd_order(lat, n_particles, n_turns, agamma0)
     cp(lat,"$(path)/3rd_order_map/$(subdirname)/$(lat)_$(subdirname)")
     temp_lat = "$(path)/3rd_order_map/$(subdirname)/$(lat)_$(subdirname)"
     latf = open(temp_lat, "a")
-    write(latf, "parameter[e_tot] = $(agamma0[i])/anom_moment_electron*m_electron")
+    write(latf, "\nparameter[e_tot] = $(agamma0[i])/anom_moment_electron*m_electron")
     close(latf)
 
     run_3rd_order_map_tracking(temp_lat, n_particles, n_turns; use_data_path=false)
