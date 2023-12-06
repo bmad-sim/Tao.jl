@@ -19,7 +19,7 @@ export  data_path,
 # Returns empty string if lattice not found
 function data_path(lat)
   if isfile(lat)
-    path = dirname(abspath(lat)) * "tao_jl_" * basename(lat)
+    path = dirname(abspath(lat)) * "/tao_jl_" * basename(lat)
     if !ispath(path)
       mkpath(path)
     end
@@ -566,7 +566,7 @@ function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=tru
                 set -x
                 p1=\$(pwd)
                 p3=\$(basename \$PWD)
-                qsub -q all.q -pe sge_pe 32 -N $(replace(lat, "."=>"_") * "_32") -o \${p1}/out.txt -e \${p1}/err.txt -hold_jid \$(qsub -terse -q all.q -pe sge_pe 1 -N $(replace(lat, "."=>"_") * "_1") -o \${p1}/out.txt -e \${p1}/err.txt \${p1}/run1.sh \${p1}) \${p1}/run32.sh \${p1}
+                qsub -q all.q -pe sge_pe 32 -N $(replace(basename(lat), "."=>"_") * "_32") -o \${p1}/out.txt -e \${p1}/err.txt -hold_jid \$(qsub -terse -q all.q -pe sge_pe 1 -N $(replace(basename(lat), "."=>"_") * "_1") -o \${p1}/out.txt -e \${p1}/err.txt \${p1}/run1.sh \${p1}) \${p1}/run32.sh \${p1}
               """
   # We need to get the equilibrium emittances to start the tracking with those:
   run(`tao -lat $lat -noplot -command "show -write $(path)/uni.txt uni ; exit"`)
