@@ -15,7 +15,9 @@ export  data_path,
         pol_scan,
         get_pol_data,
         run_3rd_order_map_tracking,
-        run_pol_scan_3rd_order
+        run_pol_scan_3rd_order,
+        read_pol_scan_3rd_order,
+        get_pol_track_data
 
 # Returns empty string if lattice not found
 function data_path(lat)
@@ -366,7 +368,7 @@ function pol_scan(lat, agamma0)
   println(tao_cmd, "set bmad_com spin_tracking_on = T")
   println(tao_cmd, "set ele 0 e_tot = $(agamma0[1]*m_e/a_e)")
   println(tao_cmd, "python -write $(path)/spin.dat spin_polarization")
-  for i = 1:length(agamma0)
+  for i in eachindex(agamma0)
     println(tao_cmd, "set ele 0 e_tot = $(agamma0[i]*m_e/a_e)")
     println(tao_cmd, "python -append $(path)/spin.dat spin_polarization")
   end
@@ -682,7 +684,7 @@ function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=tru
   # Create directories on host:
   run(`ssh lnx4200 "mkdir -p $(remote_path)"`)
   # Copy lattice file (use rsync so it remains unchanged if the files are equivalent)
-  run(`rsync $(lat) lnx4200:$(remote_path)`)
+  run(`rsync -t $(lat) lnx4200:$(remote_path)`)
   # Copy files over:
   run(`scp -r $(track_path)/. lnx4200:$(remote_path)`)
 
@@ -715,12 +717,16 @@ function run_pol_scan_3rd_order(lat, n_particles, n_turns, agamma0)
   # Create subdirectories with name equal to agamma0
   for i in eachindex(agamma0)
     subdirname = Printf.format(Printf.Format("%0$(length(string(floor(maximum(agamma0))))).2f"), agamma0[i])
-    mkpath("$(path)/3rd_order_map/$(subdirname)")
-    cp(lat,"$(path)/3rd_order_map/$(subdirname)/$(lat)_$(subdirname)", force=true)
-    temp_lat = "$(path)/3rd_order_map/$(subdirname)/$(lat)_$(subdirname)"
-    latf = open(temp_lat, "a")
-    write(latf, "\nparameter[e_tot] = $(agamma0[i])/anom_moment_electron*m_electron")
-    close(latf)
+    
+    # ONLY CREATE NEW FILES IF IT DOESN'T EXIST YET
+    if !ispath("$(path)/3rd_order_map/$(subdirname)")
+      mkpath("$(path)/3rd_order_map/$(subdirname)")
+      cp(lat,"$(path)/3rd_order_map/$(subdirname)/$(lat)_$(subdirname)")
+      temp_lat = "$(path)/3rd_order_map/$(subdirname)/$(lat)_$(subdirname)"
+      latf = open(temp_lat, "a")
+      write(latf, "\nparameter[e_tot] = $(agamma0[i])/anom_moment_electron*m_electron")
+      close(latf)
+    end
 
     run_3rd_order_map_tracking(temp_lat, n_particles, n_turns; use_data_path=false)
   end
@@ -829,44 +835,35 @@ function read_pol_scan_3rd_order(lat, n_damp)
   return pol_track_data
 end
 
-
 """
-    pol_track_scan(lat, n_damp, data_ave="data.ave")
-INCOMPLETE
-Reads tracking data for the energies tracked in a `tracking` directory with 
-the lattice file, calculates important polarization quantities and stores them 
-for fast reference in the data. The data can then be retrieved using the 
-`get_pol_track_data` method. The `tracking` directory should contain subdirectories 
-with names equal to the `agamma0` and contain the turn-by-turn averages tracking 
-output from the `long_term_tracking` Bmad program. 
+    get_pol_track_data(lat)
 
-### Input
-- `lat`            -- lat file name
-- `n_damp`         -- Number of turns where equilibrium emittances are reached
-- `data_ave`       -- (Optional) Averages output file name, default is `data.ave`
-
-### Output 
-- `pol_track_data` -- PolData struct containing polarization quantities for all tracked energies
+Gets the polarization tracking data for the specified lattice.
 """
-function pol_track_scan(lat, n_damp, data_ave="data.ave")
+function get_pol_track_data(lat)
   path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
     return
   end
-
-  # Use first-order P_st and tau_bks to calculate polarization data with nonlinear tau_dep
-  pol_data = get_pol_data(lat)
-  if isnothing(pol_data)
-    return 
+  if !isfile("$(path)/pol_track_data.dlm")
+    println("Tracking polarization data not generated for lattice $(lattice). Please use the read_pol_scan_3rd_order method to generate the data.")
   end
-
-  # Tracking energies not particularly at linear evaluation energies, so interpolate
-  P_st_interp = linear_interpolation(pol_data.agamma0, pol_data.P_st)
-  tau_bks_interp = linear_interpolation(pol_data.agamma0, pol_data.tau_bks)
+  pol_track_data_dlm = readdlm("$(path)/pol_track_data.dlm", ';')[2:end,:]
   
-  subdirs = readdir("$(tracking)")
-  agamma0_track = subdirs[isdir.(subdirs, join=true)]
+
+  return PolData( pol_track_data_dlm[:,1],
+                  pol_track_data_dlm[:,2],
+                  pol_track_data_dlm[:,3],
+                  pol_track_data_dlm[:,4],
+                  pol_track_data_dlm[:,5],
+                  pol_track_data_dlm[:,6],
+                  pol_track_data_dlm[:,7],
+                  pol_track_data_dlm[:,8],
+                  pol_track_data_dlm[:,9],
+                  pol_track_data_dlm[:,10],
+                  pol_track_data_dlm[:,11],
+                  pol_track_data_dlm[:,12])
 end
 
 end
