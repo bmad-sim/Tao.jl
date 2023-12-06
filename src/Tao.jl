@@ -693,7 +693,7 @@ function run_pol_scan_3rd_order(lat, n_particles, n_turns, agamma0)
 
   # Create subdirectories with name equal to agamma0
   for i=1:length(agamma0)
-    subdirname = Printf.format(Printf.Format("%0$(length(string(maximum(floor(agamma0))))).2f"), agamma0[i])
+    subdirname = Printf.format(Printf.Format("%0$(length(string(floor(maximum(agamma0))))).2f"), agamma0[i])
     mkpath("$(path)/3rd_order_map/$(subdirname)")
     cp(lat,"$(path)/3rd_order_map/$(subdirname)/$(lat)_$(subdirname)")
     temp_lat = "$(path)/3rd_order_map/$(subdirname)/$(lat)_$(subdirname)"
