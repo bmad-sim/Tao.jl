@@ -13,7 +13,8 @@ export  data_path,
         calc_T,
         pol_scan,
         get_pol_data,
-        run_3rd_order_map_tracking 
+        run_3rd_order_map_tracking,
+        run_pol_scan_3rd_order
 
 # Returns empty string if lattice not found
 function data_path(lat)
@@ -513,8 +514,8 @@ This routine sets up 3rd order map tracking with the bends split for radiation,
 starting the distribution with the equilibrium emittances of the lattice. The 
 job is then submitted to the CLASSE cluster for parallel evaluation and stored 
 in a directory on the CLASSE machine in ~/trackings_jl/. First, 1 particle is 
-tracked for 1 turn using only 1 thread, and then `n_particles` are tracked for 
-`n_turns` using the maximum number of threads (32). This is the most efficient 
+tracked for 1 turn using only 1 thread, and then n_particles are tracked for 
+n_turns using the maximum number of threads (32). This is the most efficient 
 way of tracking on the CLASSE cluster.
 
 IMPORTANT: Before first running this function, a softlink should be set up in a 
@@ -662,7 +663,7 @@ function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=tru
   # Copy lattice file:
   run(`scp -r $(lat) lnx4200:$(remote_path)`)
   # Copy files over:
-  run(`scp -r $(track_path). lnx4200:$(remote_path)`)
+  run(`scp -r $(track_path)/. lnx4200:$(remote_path)`)
 
 
   # Submit the tracking on host
