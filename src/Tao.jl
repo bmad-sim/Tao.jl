@@ -19,7 +19,7 @@ export  data_path,
 # Returns empty string if lattice not found
 function data_path(lat)
   if isfile(lat)
-    path = "tao_jl_"* abspath(lat)
+    path = dirname(abspath(lat)) * "tao_jl_" * basename(lat)
     if !ispath(path)
       mkpath(path)
     end
