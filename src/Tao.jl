@@ -18,7 +18,7 @@ export  data_path,
 # Returns empty string if lattice not found
 function data_path(lat)
   if isfile(lat)
-    path = lat * "_tao_jl"
+    path = abspath(lat) * "_tao_jl"
     if !ispath(path)
       mkpath(path)
     end
@@ -291,7 +291,7 @@ end
 Calculates how often the bunches would need to be replaced in a lattice with 
 equal bunches parallel and antiparallel to the arc dipole fields to maintain 
 a minimum time-averaged polarization of `P_min_avg` Defaults are values used 
-in the ESR of the EIC (P_0 = 85%, P_min_avg = 70%)
+in the ESR of the EIC (`P_0` = 85%, `P_min_avg` = 70%)
 
 ### Input
 - `P_dk`      -- Array of DK polarizations
@@ -506,7 +506,7 @@ end
 
 
 """
-  run_3rd_order_map_tracking(lat, n_particles, n_turns)
+  run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=true)
 
 NOTE: THIS FUNCTION ONLY WORKS WHEN LOGGED INTO A COMPUTER ON THE CLASSE VPN!
 This routine sets up 3rd order map tracking with the bends split for radiation, 
@@ -528,16 +528,24 @@ ln -s trackings_jl ~/trackings_jl
 This must be done because storage is limited in the users' home directory, but not 
 in /nfs/acc/user/<NetID>
 """
-function run_3rd_order_map_tracking(lat, n_particles, n_turns)
+function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=true)
   path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
     return
   end
-  
-  if !isdir("$(path)/tracking")
-    mkdir("$(path)/tracking")
+
+  if (use_data_path)
+    track_path = "$(path)/3rd_order_map"
+    if !ispath(track_path)
+      mkpath(track_path)
+    end
+  else
+    path = dirname(abspath(lat))
+    track_path = path
   end
+  
+
   
 
   # In the tracking directory, we must create the long_term_tracking.init, run.sh, and qtrack.sh, 
@@ -557,7 +565,7 @@ function run_3rd_order_map_tracking(lat, n_particles, n_turns)
                 set -x
                 p1=\$(pwd)
                 p3=\$(basename \$PWD)
-                qsub -q all.q -pe sge_pe 32 -N \${p3//./} -o \${p1}/out.txt -e \${p1}/err.txt -hold_jid \$(qsub -terse -q all.q -pe sge_pe 1 -N \${p3//./} -o \${p1}/out.txt -e \${p1}/err.txt \${p1}/run1.sh \${p1}) \${p1}/run32.sh \${p1}
+                qsub -q all.q -pe sge_pe 32 -N $(replace(lat, "."=>"_") * "_32") -o \${p1}/out.txt -e \${p1}/err.txt -hold_jid \$(qsub -terse -q all.q -pe sge_pe 1 -N $(replace(lat, "."=>"_") * "_1") -o \${p1}/out.txt -e \${p1}/err.txt \${p1}/run1.sh \${p1}) \${p1}/run32.sh \${p1}
               """
   # We need to get the equilibrium emittances to start the tracking with those:
   run(`tao -lat $lat -noplot -command "show -write $(path)/uni.txt uni ; exit"`)
@@ -642,19 +650,19 @@ function run_3rd_order_map_tracking(lat, n_particles, n_turns)
                             /
                             """
 
-  remote_path = "~/trackings_jl" * pwd() * "/" * lat
-  write("$(path)/tracking/run1.sh", run1_sh)
-  write("$(path)/tracking/run32.sh", run32_sh)
-  write("$(path)/tracking/qtrack.sh", qtrack_sh)
-  write("$(path)/tracking/long_term_tracking.init", long_term_tracking_init)
-  write("$(path)/tracking/long_term_tracking1.init", long_term_tracking1_init)
+  remote_path = "~/trackings_jl" * $(track_path)
+  write("$(track_path)/run1.sh", run1_sh)
+  write("$(track_path)/run32.sh", run32_sh)
+  write("$(track_path)/qtrack.sh", qtrack_sh)
+  write("$(track_path)/long_term_tracking.init", long_term_tracking_init)
+  write("$(track_path)/long_term_tracking1.init", long_term_tracking1_init)
   
   # Create directories on host:
   run(`ssh lnx4200 "mkdir -p $(remote_path)"`)
   # Copy lattice file:
   run(`scp -r $(lat) lnx4200:$(remote_path)`)
   # Copy files over:
-  run(`scp -r $(path)/tracking/. lnx4200:$(remote_path)`)
+  run(`scp -r $(track_path). lnx4200:$(remote_path)`)
 
 
   # Submit the tracking on host
@@ -672,8 +680,28 @@ This routine sets up and submits the parallel 3rd order map tracking
 jobs to the CLASSE cluster for the range of `agamma0` specified. 
 """
 function run_pol_scan_3rd_order(lat, n_particles, n_turns, agamma0)
+  path = data_path(lat)
+  if path == ""
+    println("Lattice file $(lat) not found!")
+    return
+  end
   
+  if !ispath("$(path)/3rd_order_map")
+    mkpath("$(path)/3rd_order_map")
+  end
 
+  # Create subdirectories with name equal to agamma0
+  for i=1:length(agamma0)
+    subdirname = Printf.format(Printf.Format("%0$(length(string(maximum(agamma0)))).2d"), agamma0[i])
+    mkpath("$(path)/3rd_order_map/$(subdirname)")
+    cp(lat,"$(path)/3rd_order_map/$(subdirname)/$(lat)_$(subdirname)")
+    temp_lat = "$(path)/3rd_order_map/$(subdirname)/$(lat)_$(subdirname)"
+    latf = open(temp_lat, "a")
+    write(latf, "parameter[e_tot] = $(agamma0[i])/anom_moment_electron*m_electron")
+    close(latf)
+
+    run_3rd_order_map_tracking(temp_lat, n_particles, n_turns; use_data_path=false)
+  end
 end
 
 """
