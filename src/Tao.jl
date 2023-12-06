@@ -716,7 +716,7 @@ function run_pol_scan_3rd_order(lat, n_particles, n_turns, agamma0)
   for i in eachindex(agamma0)
     subdirname = Printf.format(Printf.Format("%0$(length(string(floor(maximum(agamma0))))).2f"), agamma0[i])
     mkpath("$(path)/3rd_order_map/$(subdirname)")
-    cp(lat,"$(path)/3rd_order_map/$(subdirname)/$(lat)_$(subdirname)")
+    cp(lat,"$(path)/3rd_order_map/$(subdirname)/$(lat)_$(subdirname)", force=true)
     temp_lat = "$(path)/3rd_order_map/$(subdirname)/$(lat)_$(subdirname)"
     latf = open(temp_lat, "a")
     write(latf, "\nparameter[e_tot] = $(agamma0[i])/anom_moment_electron*m_electron")
