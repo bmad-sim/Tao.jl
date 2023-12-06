@@ -19,7 +19,7 @@ export  data_path,
 # Returns empty string if lattice not found
 function data_path(lat)
   if isfile(lat)
-    path = abspath(lat) * "_tao_jl"
+    path = "tao_jl_"* abspath(lat)
     if !ispath(path)
       mkpath(path)
     end
@@ -524,7 +524,7 @@ user's home directory on the CLASSE machine that points to the user's directory
 
 cd /nfs/acc/user/<NetID>
 mkdir trackings_jl
-ln -s trackings_jl ~/trackings_jl
+ln -s /nfs/acc/user/<NetID> ~/trackings_jl
 
 This must be done because storage is limited in the users' home directory, but not 
 in /nfs/acc/user/<NetID>
@@ -693,7 +693,7 @@ function run_pol_scan_3rd_order(lat, n_particles, n_turns, agamma0)
 
   # Create subdirectories with name equal to agamma0
   for i=1:length(agamma0)
-    subdirname = Printf.format(Printf.Format("%0$(length(string(maximum(agamma0)))).2d"), agamma0[i])
+    subdirname = Printf.format(Printf.Format("%0$(length(string(maximum(floor(agamma0))))).2f"), agamma0[i])
     mkpath("$(path)/3rd_order_map/$(subdirname)")
     cp(lat,"$(path)/3rd_order_map/$(subdirname)/$(lat)_$(subdirname)")
     temp_lat = "$(path)/3rd_order_map/$(subdirname)/$(lat)_$(subdirname)"
