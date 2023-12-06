@@ -686,7 +686,7 @@ function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=tru
   # Copy lattice file (use rsync so it remains unchanged if the files are equivalent)
   run(`rsync -t $(lat) lnx4200:$(remote_path)`)
   # Copy files over:
-  run(`scp -r $(track_path)/. lnx4200:$(remote_path)`)
+  run(`scp -r $(track_path)/\\{run1.sh,run32.sh,qtrack.sh,long_term_tracking.init,long_term_tracking1.init\\} lnx4200:$(remote_path)`)
 
 
   # Submit the tracking on host
