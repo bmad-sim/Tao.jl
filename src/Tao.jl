@@ -779,8 +779,8 @@ function read_pol_scan_3rd_order(lat, n_damp)
   for subdir in subdirs
     data_ave = readdlm(subdir * "/data.ave")
     row_start = findlast(x->occursin("#",string(x)), data_ave[:,1])[1] + 1
-    t = data_ave[row_start+n_damp:end,3]
-    P = data_ave[row_start+n_damp:end,4]
+    t = Float64.(data_ave[row_start+n_damp:end,3])
+    P = Float64.(data_ave[row_start+n_damp:end,4])
     # Linear regression to get depol time
     data = DataFrame(X=t, Y=P)
     tau_dep_track = -coef(lm(@formula(Y ~ X), data))[2]^-1/60
