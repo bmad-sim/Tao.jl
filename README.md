@@ -1,5 +1,5 @@
 # Tao.jl
-Interface to the Tao program (from the Bmad ecosystem) for simulating high energy charged particle beams and X-rays. This package presently provides Julia functions for various polarization calculations that interface to Tao, using the methods detailed below. Metadata is stored in .tao.jl directory, created in the user's home directory.
+Interface to the Tao program (from the Bmad ecosystem) for simulating high energy charged particle beams and X-rays. This package presently provides Julia functions for various polarization calculations that interface to Tao, using the methods detailed below.
 
 ## Command line interface to Tao
 There are currently two ways of running Tao from a Julia program. The first, and recommended way, is to have the program create a separate Tao command file (e.g. `tao.cmd`), which is then fed into Tao in the command line interface. For example, in the Julia program:
