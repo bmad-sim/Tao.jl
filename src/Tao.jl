@@ -93,16 +93,16 @@ Best Adjustment Groups for ELectron Spin (BAGELS) method step 1: calculates the 
 dn/ddelta with all combinations of closed orbit 2-bumps. Coil pairs with phase separation of 
 dPhi are included when `rem(dPhi - phi_start, phi_step, RoundNearest) < tol`. `sgn` specifies 
 the sign of the first kick times the sign of the second kick. E.g., for only pi-bumps, use 
-`phi_start` = pi, `phi_step` = (something large), and `sgn` = -1. For all orthogonal kicks 
-(equal kicks 2*pi*N apart), use `phi_start` = 0, `phi_step` = 2*pi, `sgn` = 1.
+`phi_start` = pi, `phi_step` = (something large), and `sgn` = 1. For all orthogonal kicks 
+(equal kicks 2*pi*N apart), use `phi_start` = 0, `phi_step` = 2*pi, `sgn` = -1.
 
 ### Input
-- `lat`       -- lat file name
-- `phi_start` -- phi_start as described above
-- `phi_step`  -- phi_step as described above
-- `sgn`       -- sgn as described above
-- `kick`      -- (Optional) Coil kick, default is 1e-5
-- `tol`       -- (Optional) Tolerance for difference in phase, default is 1e-8
+- `lat`        -- lat file name
+- `phi_start`  -- phi_start as described above
+- `phi_step`   -- phi_step as described above
+- `sgn`        -- sgn as described above
+- `kick`       -- (Optional) Coil kick, default is 1e-5
+- `tol`        -- (Optional) Tolerance for difference in phase, default is 1e-8
 """
 function BAGELS_1(lat, phi_start, phi_step, sgn, kick=1e-5, tol=1e-8)
   path = data_path(lat)
@@ -194,15 +194,16 @@ E.g., for only pi-bumps, use `phi_start` = pi, `phi_step` = (something large), a
 
 
 ### Input
-- `lat`       -- lat file name
-- `phi_start` -- phi_start as described above
-- `phi_step`  -- phi_step as described above
-- `N_knobs`   -- Number of knobs to generate in group element, written in Bmad format
-- `suffix`    -- (Optional) Suffix to append to group elements generated for knobs in Bmad format
-- `outf`      -- (Optional) Output file name with group elements constructed from BAGELS, default is "BAGELS.bmad"
-- `kick`      -- (Optional) Coil kick, default is 1e-5
+- `lat`        -- lat file name
+- `phi_start`  -- phi_start as described above
+- `phi_step`   -- phi_step as described above
+- `N_knobs`    -- Number of knobs to generate in group element, written in Bmad format
+- `coil_regex` -- (Optional) Regex of coils to match to (e.g. for all coils ending in _7 or _9, use r".*_[7,9]\\b")
+- `suffix`     -- (Optional) Suffix to append to group elements generated for knobs in Bmad format
+- `outf`       -- (Optional) Output file name with group elements constructed from BAGELS, default is "BAGELS.bmad"
+- `kick`       -- (Optional) Coil kick, default is 1e-5
 """
-function BAGELS_2(lat, phi_start, phi_step, N_knobs; suffix="", outf="BAGELS.bmad", kick=1e-5)
+function BAGELS_2(lat, phi_start, phi_step, N_knobs; coil_regex=r".*", suffix="", outf="BAGELS.bmad", kick=1e-5)
   path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
@@ -213,13 +214,24 @@ function BAGELS_2(lat, phi_start, phi_step, N_knobs; suffix="", outf="BAGELS.bma
   str_kick = @sprintf("%1.2e", kick)
 
   path = "$(path)/BAGELS_$(str_phi)"
-  coil_pairs = readdlm("$(path)/bumps.txt", ',')[:,1:2]
+  coil_pairs_raw = readdlm("$(path)/bumps.txt", ',')[:,1:2]
   eletypes = readdlm("$(path)/responses_$(str_kick)/baseline.txt", skipstart=2)[1:end-2,3]
   dn_dpz0 = readdlm("$(path)/responses_$(str_kick)/baseline.txt", skipstart=2)[1:end-2,6:8]
 
   # Get number of Sbends to only sample at Sbends
   idx_bends = findall(i-> i=="Sbend", eletypes)
   dn_dpz0_bends = dn_dpz0[idx_bends,:]
+
+  # Only use coil pairs where both match the regex:
+  coil_pairs_list = []
+  for i=1:length(coil_pairs_raw[:,1])
+    if occursin(coil_regex, coil_pairs_raw[i,1]) && occursin(coil_regex, coil_pairs_raw[i,2])
+      push!(coil_pairs_list, coil_pairs_raw[i,1])
+      push!(coil_pairs_list, coil_pairs_raw[i,2])
+    end
+  end
+
+  coil_pairs = permutedims(reshape(coil_pairs_list, (2,floor(Int, length(coil_pairs_list)/2))))
 
   # We now will have a response matrix that is N_bends x N_coil_pairs to multiply with vector N_coil_pairs x 1
   delta_dn_dpz = zeros(length(idx_bends), length(coil_pairs[:,1]))
@@ -264,16 +276,25 @@ function BAGELS_2(lat, phi_start, phi_step, N_knobs; suffix="", outf="BAGELS.bma
     end
     
     println(knob_out, "BAGELS$(suffix)$(Printf.format(Printf.Format("%0$(length(string(N_knobs)))i"), i)): group = {")
+    
+    coil = unique_coils[1]
+    strength = 0.
+    idxs_coil = findall(i->i==coil, raw[:,1])
+    strength = sum(raw[idxs_coil,2])
+    print(knob_out, "$(coil)[kick]: $(strength)*X")
 
-    for coil in unique_coils
+    for coil in Iterators.drop(unique_coils, 1)
       strength = 0.
       idxs_coil = findall(i->i==coil, raw[:,1])
       strength = sum(raw[idxs_coil,2])
-      println(knob_out, "$(coil)[kick]: $(strength)*X,")
+      print(knob_out, ",\n$(coil)[kick]: $(strength)*X")
     end
     println(knob_out, "}, var = {X}")
     close(knob_out)
   end
+
+  print("\nSingular values are: ")
+  print(F.S[1:N_knobs])
 end
 
 
@@ -575,14 +596,14 @@ function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=tru
   # which will then be scp-ed to the equivalent directory on the remote machine. On the remote 
   # machine, tracking info is stored in ~/trackings_jl/, where the full path to the lattice on 
   # this machine will be written and the tracking folder dropped there.
-
+  # Old executable: /home/mgs255/mgs255/master/production/bin/long_term_tracking_mpi
   run1_sh =    """
                 cd \$1
-                mpirun -np 1 /home/mgs255/mgs255/master/production/bin/long_term_tracking_mpi long_term_tracking1.init
+                mpirun -np 1 /nfs/acc/user/dcs16/bmad-ecosystem/production/bin/long_term_tracking_mpi long_term_tracking1.init
               """
   run32_sh =    """
               cd \$1
-              mpirun -np 32 /home/mgs255/mgs255/master/production/bin/long_term_tracking_mpi long_term_tracking.init
+              mpirun -np 32 /nfs/acc/user/dcs16/bmad-ecosystem/production/bin/long_term_tracking_mpi long_term_tracking.init
             """
   qtrack_sh = """
                 set -x
