@@ -117,7 +117,6 @@ function BAGELS_1(lat, unit_bump, kick=1e-5, tol=1e-8)
     str_bump = "n2pi"
   elseif unit_bump == 3 # n2pi_cancel_eta_bump
     str_bump = "n2pi_cancel_eta"
-    return #TEMPORARY FOR DEVELOPMENTs
   else
     println("Unit bump type not defined!")
     return
@@ -179,7 +178,48 @@ function BAGELS_1(lat, unit_bump, kick=1e-5, tol=1e-8)
       end
       n_per_group = 2
     elseif unit_bump == 3 # n2pi_cancel_eta_bump
-      return
+      for i=1:length(coil_names)-3
+        for j=i+1:length(coil_names)-2
+          for k=j+1:length(coil_names)-1
+            for l=k+1:length(coil_names)
+              # The second two coils can be either in phase (2pin apart) and opposite sign, or out of 
+              # phase with same sign)
+              # First set and second set must be separate n2pi bump:
+              if abs(rem(coil_phis[j] - coil_phis[i], 2*pi, RoundNearest)) < tol && abs(rem(coil_phis[l] - coil_phis[k], 2*pi, RoundNearest)) < tol
+                # Now check if either in phase exactly or out of phase exactly:
+                if abs(rem(coil_phis[j] -coil_phis[k], 2*pi, RoundNearest)) < tol   # In phase exactly
+                  push!(unit_groups_list, coil_names[i])
+                  push!(unit_groups_list, coil_names[j])
+                  push!(unit_groups_list, coil_names[k])
+                  push!(unit_groups_list, coil_names[l])
+                  push!(unit_sgns_list, +1.)
+                  push!(unit_sgns_list, -1.)  
+                  push!(unit_sgns_list, -1.)  
+                  push!(unit_sgns_list, +1.)  
+                  push!(unit_curkicks_list, coil_kicks[i])
+                  push!(unit_curkicks_list, coil_kicks[j])
+                  push!(unit_curkicks_list, coil_kicks[k])
+                  push!(unit_curkicks_list, coil_kicks[l])
+                elseif abs(rem(coil_phis[j] - coil_phis[k] - pi,2*pi, RoundNearest)) < tol   # Out of phase exactly
+                  push!(unit_groups_list, coil_names[i])
+                  push!(unit_groups_list, coil_names[j])
+                  push!(unit_groups_list, coil_names[k])
+                  push!(unit_groups_list, coil_names[l])
+                  push!(unit_sgns_list, +1.)
+                  push!(unit_sgns_list, -1.) 
+                  push!(unit_sgns_list, +1.) 
+                  push!(unit_sgns_list, -1.) 
+                  push!(unit_curkicks_list, coil_kicks[i])
+                  push!(unit_curkicks_list, coil_kicks[j])
+                  push!(unit_curkicks_list, coil_kicks[k])
+                  push!(unit_curkicks_list, coil_kicks[l])
+                end
+              end
+            end
+          end
+        end
+      end
+      n_per_group = 4
     end
 
     # Info to store is: each coil in the group, each of their current strengths, and each of their kick sgns/mags
