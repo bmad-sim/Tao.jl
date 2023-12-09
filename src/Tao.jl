@@ -377,6 +377,7 @@ function BAGELS_2(lat, unit_bump; coil_regex=r".*", suffix="", outf="BAGELS.bmad
 
   print("\nSingular values are: ")
   print(F.S)
+  return F
 end
 
 
@@ -787,7 +788,7 @@ function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=tru
   # Create directories on host:
   run(`ssh lnx4200 "mkdir -p $(remote_path)"`)
   # Copy lattice file (use rsync so it remains unchanged if the files are equivalent)
-  #run(`rsync -t $(lat) lnx4200:$(remote_path)`)
+  run(`rsync -t $(lat) lnx4200:$(remote_path)`)
   # Copy files over:
   run(`scp $(track_path)/run1.sh $(track_path)/run32.sh $(track_path)/qtrack.sh $(track_path)/long_term_tracking.init $(track_path)/long_term_tracking1.init lnx4200:$(remote_path)`)
 
