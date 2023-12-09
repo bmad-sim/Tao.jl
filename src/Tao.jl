@@ -123,10 +123,10 @@ function BAGELS_1(lat, phi_start, phi_step, sgn, kick=1e-5, tol=1e-8)
   # First, obtain all combinations of bumps with desired phase advance
   if !isfile("$(path)/bumps.txt")
     if !isfile("$(path)/vkickers.txt")
-      run(`tao -lat $lat -noplot -command "set ele * kick = 0; show -write $(path)/vkickers.txt lat vkicker::* -at phi_b@f20.16; exit"`)
+      run(`tao -lat $lat -noplot -command "set ele * spin_tracking_method = sprint; set ele * kick = 0; show -write $(path)/vkickers.txt lat vkicker::* -at phi_b@f20.16; exit"`)
     end
     if !isfile("$(path)/kicks.txt")
-      run(`tao -lat $lat -noplot -command "show -write $(path)/kicks.txt lat vkicker::* -at phi_b@f20.16 -at kick@f20.16; exit"`)
+      run(`tao -lat $lat -noplot -command "set ele * spin_tracking_method = sprint; show -write $(path)/kicks.txt lat vkicker::* -at phi_b@f20.16 -at kick@f20.16; exit"`)
     end
 
     # Read coil data and extract valid pairs
@@ -164,6 +164,8 @@ function BAGELS_1(lat, phi_start, phi_step, sgn, kick=1e-5, tol=1e-8)
   # All of these bumps are separate group knobs, the individual coils have opposite strengths
   # Now build response matrix of dn/ddelta at each sbend (sampled at beginning and ends of bends)
   tao_cmd = open("$(path)/responses_$(str_kick)/BAGELS_1.cmd", "w")
+  println(tao_cmd, "set ele * spin_tracking_method = sprint")
+  println(tao_cmd, "set bmad_com spin_tracking_on = T")
   println(tao_cmd, "show -write $(path)/responses_$(str_kick)/baseline.txt lat sbend::* multipole::* -at spin_dn_dpz.x@f20.16 -at spin_dn_dpz.y@f20.16 -at spin_dn_dpz.z@f20.16")
 
   for i=1:length(coil_pairs[:,1])
@@ -198,7 +200,7 @@ E.g., for only pi-bumps, use `phi_start` = pi, `phi_step` = (something large), a
 - `phi_start`  -- phi_start as described above
 - `phi_step`   -- phi_step as described above
 - `N_knobs`    -- Number of knobs to generate in group element, written in Bmad format
-- `coil_regex` -- (Optional) Regex of coils to match to (e.g. for all coils ending in _7 or _9, use r".*_[7,9]\\b")
+- `coil_regex` -- (Optional) Regex of coils to match to (e.g. for all coils ending in "_7" or "_11", use r".*_(?:7|11)\\b")
 - `suffix`     -- (Optional) Suffix to append to group elements generated for knobs in Bmad format
 - `outf`       -- (Optional) Output file name with group elements constructed from BAGELS, default is "BAGELS.bmad"
 - `kick`       -- (Optional) Coil kick, default is 1e-5
@@ -398,7 +400,7 @@ function pol_scan(lat, agamma0)
   close(tao_cmd)
 
   # Execute the scan
-  run(`tao -lat $lat -noplot -command "call $(path)/spin.tao"`)
+  run(`tao -lat $lat -noplot -noinit -command "call $(path)/spin.tao"`)
 
   # Calculate important quantities and store in data
   data = readdlm("$(path)/spin.dat", ';')[:,4]
@@ -599,11 +601,11 @@ function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=tru
   # Old executable: /home/mgs255/mgs255/master/production/bin/long_term_tracking_mpi
   run1_sh =    """
                 cd \$1
-                mpirun -np 1 /nfs/acc/user/dcs16/bmad-ecosystem/production/bin/long_term_tracking_mpi long_term_tracking1.init
+                mpirun -np 1 /home/mgs255/mgs255/master/production/bin/long_term_tracking_mpi long_term_tracking1.init
               """
   run32_sh =    """
               cd \$1
-              mpirun -np 32 /nfs/acc/user/dcs16/bmad-ecosystem/production/bin/long_term_tracking_mpi long_term_tracking.init
+              mpirun -np 32 /home/mgs255/mgs255/master/production/bin/long_term_tracking_mpi long_term_tracking.init
             """
   qtrack_sh = """
                 set -x
