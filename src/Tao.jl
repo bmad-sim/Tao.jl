@@ -87,41 +87,51 @@ struct PolTrackData
 end
 
 """
-    BAGELS_1(lat, phi_start, phi_step, sgn, kick=1e-5, tol=1e-8)
+    BAGELS_1(lat, unit_bump, kick=1e-5, tol=1e-8)
 
 Best Adjustment Groups for ELectron Spin (BAGELS) method step 1: calculates the response of 
-dn/ddelta with all combinations of closed orbit 2-bumps. Coil pairs with phase separation of 
-dPhi are included when `rem(dPhi - phi_start, phi_step, RoundNearest) < tol`. `sgn` specifies 
-the sign of the first kick times the sign of the second kick. E.g., for only pi-bumps, use 
-`phi_start` = pi, `phi_step` = (something large), and `sgn` = 1. For all orthogonal kicks 
-(equal kicks 2*pi*N apart), use `phi_start` = 0, `phi_step` = 2*pi, `sgn` = -1.
+dn/ddelta with all combinations of the inputted vertical closed orbit bump types as the 
+"unit bumps". The types are:
+(1) pi_bump              -- No coupling cancellation, no dispersion cancellation
+(2) n2pi_bump            -- Coupling cancellation, no dispersion cancellation
+(3) n2pi_cancel_eta_bump -- Coupling and dispersion cancellation
 
 ### Input
-- `lat`        -- lat file name
-- `phi_start`  -- phi_start as described above
-- `phi_step`   -- phi_step as described above
-- `sgn`        -- sgn as described above
-- `kick`       -- (Optional) Coil kick, default is 1e-5
-- `tol`        -- (Optional) Tolerance for difference in phase, default is 1e-8
+- `lat`       -- lat file name
+- `unit_bump` -- Type of unit closed orbit bump. Options are: (1) pi_bump, (2) n2pi_bump, (3) n2pi_cancel_eta_bump
+- `kick`      -- (Optional) Coil kick, default is 1e-5
+- `tol`       -- (Optional) Tolerance for difference in phase, default is 1e-8
 """
-function BAGELS_1(lat, phi_start, phi_step, sgn, kick=1e-5, tol=1e-8)
+function BAGELS_1(lat, unit_bump, kick=1e-5, tol=1e-8)
   path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
     return
   end
-  str_phi = @sprintf("%1.2e", phi_start) * "_" * @sprintf("%1.2e", phi_step)
-  str_kick = @sprintf("%1.2e", kick)
 
-  # Generate directory in lattice data path for these phi_start and phi_step
-  if !isdir("$(path)/BAGELS_$(str_phi)")
-    mkdir("$(path)/BAGELS_$(str_phi)")
+  str_kick = @sprintf("%1.2e", kick) 
+
+  if unit_bump == 1     # pi_bump
+    str_bump = "pi"
+  elseif unit_bump == 2 # n2pi_bump
+    str_bump = "n2pi"
+  elseif unit_bump == 3 # n2pi_cancel_eta_bump
+    str_bump = "n2pi_cancel_eta"
+    return #TEMPORARY FOR DEVELOPMENTs
+  else
+    println("Unit bump type not defined!")
+    return
   end
 
-  path = "$(path)/BAGELS_$(str_phi)"
+  # Generate directory in lattice data path for these phi_start and phi_step
+  if !isdir("$(path)/BAGELS_$(str_bump)")
+    mkdir("$(path)/BAGELS_$(str_bump)")
+  end
+
+  path = "$(path)/BAGELS_$(str_bump)"
 
   # First, obtain all combinations of bumps with desired phase advance
-  if !isfile("$(path)/bumps.txt")
+  if !isfile("$(path)/groups.txt")
     if !isfile("$(path)/vkickers.txt")
       run(`tao -lat $lat -noplot -command "set ele * spin_tracking_method = sprint; set ele * kick = 0; show -write $(path)/vkickers.txt lat vkicker::* -at phi_b@f20.16; exit"`)
     end
@@ -135,29 +145,59 @@ function BAGELS_1(lat, phi_start, phi_step, sgn, kick=1e-5, tol=1e-8)
     coil_phis = coil_data[1:end-2, 6]
     coil_kicks = readdlm("$(path)/kicks.txt", skipstart=2)[1:end-2,7]
 
-    coil_pairs_list = []
-    coil_kicks_list = []
+    unit_groups_list = []
+    unit_curkicks_list = []
+    unit_sgns_list = []
 
-    for i=1:length(coil_names)-1
-      for j=i+1:length(coil_names)
-        if abs(rem(coil_phis[j] - coil_phis[i] - phi_start, phi_step, RoundNearest)) < tol
-          push!(coil_pairs_list, coil_names[i])
-          push!(coil_pairs_list, coil_names[j])
-          push!(coil_kicks_list, coil_kicks[i])
-          push!(coil_kicks_list, coil_kicks[j])
+    # Loop through coil names and determine the unit_groups
+    if unit_bump == 1     # pi_bump
+      for i=1:length(coil_names)-1
+        for j=i+1:length(coil_names)
+          if abs(rem(coil_phis[j] - coil_phis[i] - pi, Inf, RoundNearest)) < tol
+            push!(unit_groups_list, coil_names[i])
+            push!(unit_groups_list, coil_names[j])
+            push!(unit_sgns_list, +1.)
+            push!(unit_sgns_list, +1.)  # Coils in pi bumps have same kick sign and strength
+            push!(unit_curkicks_list, coil_kicks[i])
+            push!(unit_curkicks_list, coil_kicks[j])
+          end
         end
       end
+      n_per_group = 2
+    elseif unit_bump == 2 # n2pi_bump
+      for i=1:length(coil_names)-1
+        for j=i+1:length(coil_names)
+          if abs(rem(coil_phis[j] - coil_phis[i], 2*pi, RoundNearest)) < tol
+            push!(unit_groups_list, coil_names[i])
+            push!(unit_groups_list, coil_names[j]) 
+            push!(unit_sgns_list, +1.)
+            push!(unit_sgns_list, -1.)  # Coils in 2npi bumps have opposite kick sign but same strength
+            push!(unit_curkicks_list, coil_kicks[i])
+            push!(unit_curkicks_list, coil_kicks[j])
+          end
+        end
+      end
+      n_per_group = 2
+    elseif unit_bump == 3 # n2pi_cancel_eta_bump
+      return
     end
 
-    coil_pairs = permutedims(reshape(coil_pairs_list, 2, Int(length(coil_pairs_list)/2)))
-    strengths = permutedims(reshape(coil_kicks_list, 2, Int(length(coil_pairs_list)/2)))
-
-    writedlm("$(path)/bumps.txt", hcat(coil_pairs, strengths), ',')
+    # Info to store is: each coil in the group, each of their current strengths, and each of their kick sgns/mags
+    # Just write to three separate files for now
+  
+    unit_groups = permutedims(reshape(unit_groups_list, n_per_group, Int(length(unit_groups_list)/n_per_group)))
+    unit_sgns = permutedims(reshape(unit_sgns_list, n_per_group, Int(length(unit_sgns_list)/n_per_group)))
+    unit_curkicks = permutedims(reshape(unit_curkicks_list, n_per_group, Int(length(unit_curkicks_list)/n_per_group)))
+    
+    writedlm("$(path)/groups.txt", unit_groups, ',')
+    writedlm("$(path)/sgns.txt", unit_sgns, ',')
+    writedlm("$(path)/curkicks.txt", unit_curkicks, ',')
   end
 
-  coils = readdlm("$(path)/bumps.txt", ',')
-  coil_pairs = coils[:,1:2]
-  strengths = coils[:,3:4]
+  unit_groups = readdlm("$(path)/groups.txt", ',')
+  unit_sgns =  readdlm("$(path)/sgns.txt", ',')
+  unit_curkicks = readdlm("$(path)/curkicks.txt", ',')
+
   if !isdir("$(path)/responses_$(str_kick)")
     mkdir("$(path)/responses_$(str_kick)")
   end
@@ -168,16 +208,23 @@ function BAGELS_1(lat, phi_start, phi_step, sgn, kick=1e-5, tol=1e-8)
   println(tao_cmd, "set bmad_com spin_tracking_on = T")
   println(tao_cmd, "show -write $(path)/responses_$(str_kick)/baseline.txt lat sbend::* multipole::* -at spin_dn_dpz.x@f20.16 -at spin_dn_dpz.y@f20.16 -at spin_dn_dpz.z@f20.16")
 
-  for i=1:length(coil_pairs[:,1])
-    coil1 = coil_pairs[i,1]
-    coil2 = coil_pairs[i,2]
-    strength1 = strengths[i,1]
-    strength2 = strengths[i,2]
-    println(tao_cmd, "set ele $(coil1) kick = $(strength1 + kick)")
-    println(tao_cmd, "set ele $(coil2) kick = $(strength2 + sgn*kick)")
-    println(tao_cmd, "show -write $(path)/responses_$(str_kick)/$(coil1)_$(coil2).txt lat sbend::* multipole::* -at spin_dn_dpz.x@f20.16 -at spin_dn_dpz.y@f20.16 -at spin_dn_dpz.z@f20.16")
-    println(tao_cmd, "set ele $(coil1) kick = $(strength1)")
-    println(tao_cmd, "set ele $(coil2) kick = $(strength2)")
+  for i=1:length(unit_groups[:,1])
+    str_coils = ""
+    for j=1:length(unit_groups[i,:])
+      coil = unit_groups[i,j]
+      sgn = unit_sgns[i,j]
+      curkick = unit_curkicks[i,j]
+      println(tao_cmd, "set ele $(coil) kick = $(curkick + sgn*kick)")
+      str_coils = str_coils * coil * "_"
+    end
+    str_coils = str_coils[1:end-1] * ".txt"
+    println(tao_cmd, "show -write $(path)/responses_$(str_kick)/$(str_coils) lat sbend::* multipole::* -at spin_dn_dpz.x@f20.16 -at spin_dn_dpz.y@f20.16 -at spin_dn_dpz.z@f20.16")
+    # Reset coils to original strengths
+    for j=1:length(unit_groups[i,:])
+      coil = unit_groups[i,j]
+      curkick = unit_curkicks[i,j]
+      println(tao_cmd, "set ele $(coil) kick = $(curkick)")
+    end
   end
   println(tao_cmd, "exit")
   close(tao_cmd)
@@ -186,37 +233,52 @@ function BAGELS_1(lat, phi_start, phi_step, sgn, kick=1e-5, tol=1e-8)
 end
 
 """
-    BAGELS_2(lat, phi_start, phi_step, N_knobs; suffix="", outf="BAGELS.bmad", kick=1e-5))
+    BAGELS_2(lat, unit_bump; suffix="", outf="BAGELS.bmad", kick=1e-5))
 
 Best Adjustment Groups for ELectron Spin (BAGELS) method step 2: peform an SVD of the 
 response matrix to obtain the best adjustment groups, based on the settings of step 1. 
-E.g., for only pi-bumps, use `phi_start` = pi, `phi_step` = (something large), and 
-`sgn` = -1. For all orthogonal kicks (equal kicks 2*pi*N apart), use `phi_start` = 0, 
-`phi_step` = 2*pi, `sgn` = 1.
-
+The vertical closed orbit unit bump types are:
+(1) pi_bump              -- No coupling cancellation, no dispersion cancellation
+(2) n2pi_bump            -- Coupling cancellation, no dispersion cancellation
+(3) n2pi_cancel_eta_bump -- Coupling and dispersion cancellation
 
 ### Input
 - `lat`        -- lat file name
-- `phi_start`  -- phi_start as described above
-- `phi_step`   -- phi_step as described above
-- `N_knobs`    -- Number of knobs to generate in group element, written in Bmad format
+- `unit_bump`  -- Type of unit closed orbit bump. Options are: (1) pi_bump, (2) n2pi_bump, (3) n2pi_cancel_eta_bump
 - `coil_regex` -- (Optional) Regex of coils to match to (e.g. for all coils ending in "_7" or "_11", use r".*_(?:7|11)\\b")
 - `suffix`     -- (Optional) Suffix to append to group elements generated for knobs in Bmad format
 - `outf`       -- (Optional) Output file name with group elements constructed from BAGELS, default is "BAGELS.bmad"
 - `kick`       -- (Optional) Coil kick, default is 1e-5
 """
-function BAGELS_2(lat, phi_start, phi_step, N_knobs; coil_regex=r".*", suffix="", outf="BAGELS.bmad", kick=1e-5)
+function BAGELS_2(lat, unit_bump; coil_regex=r".*", suffix="", outf="BAGELS.bmad", kick=1e-5)
   path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
     return
   end
-  
-  str_phi = @sprintf("%1.2e", phi_start) * "_" * @sprintf("%1.2e", phi_step)
-  str_kick = @sprintf("%1.2e", kick)
 
-  path = "$(path)/BAGELS_$(str_phi)"
-  coil_pairs_raw = readdlm("$(path)/bumps.txt", ',')[:,1:2]
+  str_kick = @sprintf("%1.2e", kick)
+  if unit_bump == 1     # pi_bump
+    str_bump = "pi"
+  elseif unit_bump == 2 # n2pi_bump
+    str_bump = "n2pi"
+  elseif unit_bump == 3 # n2pi_cancel_eta_bump
+    str_bump = "n2pi_cancel_eta"
+    return #TEMPORARY FOR DEVELOPMENTs
+  else
+    println("Unit bump type not defined!")
+    return
+  end
+  # Generate directory in lattice data path for these phi_start and phi_step
+  if !isdir("$(path)/BAGELS_$(str_bump)")
+    mkdir("$(path)/BAGELS_$(str_bump)")
+  end
+
+  path = "$(path)/BAGELS_$(str_bump)"
+
+  unit_groups_raw = readdlm("$(path)/groups.txt", ',')
+  unit_sgns_raw =  readdlm("$(path)/sgns.txt", ',')
+
   eletypes = readdlm("$(path)/responses_$(str_kick)/baseline.txt", skipstart=2)[1:end-2,3]
   dn_dpz0 = readdlm("$(path)/responses_$(str_kick)/baseline.txt", skipstart=2)[1:end-2,6:8]
 
@@ -224,23 +286,38 @@ function BAGELS_2(lat, phi_start, phi_step, N_knobs; coil_regex=r".*", suffix=""
   idx_bends = findall(i-> i=="Sbend", eletypes)
   dn_dpz0_bends = dn_dpz0[idx_bends,:]
 
-  # Only use coil pairs where both match the regex:
-  coil_pairs_list = []
-  for i=1:length(coil_pairs_raw[:,1])
-    if occursin(coil_regex, coil_pairs_raw[i,1]) && occursin(coil_regex, coil_pairs_raw[i,2])
-      push!(coil_pairs_list, coil_pairs_raw[i,1])
-      push!(coil_pairs_list, coil_pairs_raw[i,2])
+  # Only use unit groups where all coils in the group match the regex
+  unit_groups_list = []
+  unit_sgns_list = []
+  n_per_group = length(unit_groups_raw[1,:])
+  for i=1:length(unit_groups_raw[:,1]) # for each group
+    use = true
+    for j=1:n_per_group
+      if !occursin(coil_regex, unit_groups_raw[i,j])
+        use = false
+      end
+    end
+    if use
+      for j=1:n_per_group
+        push!(unit_groups_list, unit_groups_raw[i,j])
+        push!(unit_sgns_list, unit_sgns_raw[i,j])
+      end
     end
   end
 
-  coil_pairs = permutedims(reshape(coil_pairs_list, (2,floor(Int, length(coil_pairs_list)/2))))
+  unit_groups = permutedims(reshape(unit_groups_list, (n_per_group,floor(Int, length(unit_groups_list)/n_per_group))))
+  unit_sgns = permutedims(reshape(unit_sgns_list, (n_per_group,floor(Int, length(unit_sgns_list)/n_per_group))))
 
-  # We now will have a response matrix that is N_bends x N_coil_pairs to multiply with vector N_coil_pairs x 1
-  delta_dn_dpz = zeros(length(idx_bends), length(coil_pairs[:,1]))
-  for i=1:length(coil_pairs[:,1])
-    coil1 = coil_pairs[i,1]
-    coil2 = coil_pairs[i,2]
-    dn_dpz_bends = readdlm("$(path)/responses_$(str_kick)/$(coil1)_$(coil2).txt", skipstart=2)[1:end-2,6:8][idx_bends,:]
+  # We now will have a response matrix that is N_bends x N_groups to multiply with vector N_groups x 1
+  delta_dn_dpz = zeros(length(idx_bends), length(unit_groups[:,1]))
+  for i=1:length(unit_groups[:,1])
+    str_coils = ""
+    for j=1:length(unit_groups[i,:])
+      coil = unit_groups[i,j]
+      str_coils = str_coils * coil * "_"
+    end
+    str_coils = str_coils[1:end-1] * ".txt"
+    dn_dpz_bends = readdlm("$(path)/responses_$(str_kick)/$(str_coils)", skipstart=2)[1:end-2,6:8][idx_bends,:]
     #dn_dpz_bends_amp = [norm(dn_dpz_bends[j,:]) for j=1:length(dn_dpz_bends[:,1])]
     #delta_dn_dpz_amp = dn_dpz_bends_amp .- dn_dpz0_bends_amp
     #delta_dn_dpz_amp = [norm(delta_dn_dpz[j,:]) for j=1:length(delta_dn_dpz[:,1])]
@@ -252,24 +329,27 @@ function BAGELS_2(lat, phi_start, phi_step, N_knobs; coil_regex=r".*", suffix=""
   F = svd(delta_dn_dpz)
 
   # Get first N_knobs principal directions
-  V = F.V[:,1:N_knobs]
+  V = F.V
 
   # Create a group element with these as knobs  
-  for i=1:N_knobs
+  for i=1:length(F.S)
     knob = V[:,i]
-    raw = Matrix{Any}(undef, length(coil_pairs), 2) #zeros(length(coil_pairs), 2)
+    # Create matrix containing the strength of individual coils based on the 
+    # the strength of that coil in each unit group
+    raw = Matrix{Any}(undef, length(unit_groups), 2)
     # First column of raw contains coil name, second is knob value
-    for j=1:length(coil_pairs[:,1])
-      coil1 = coil_pairs[j,1]
-      coil2 = coil_pairs[j,2]
-      raw[2*j-1, 1] = coil1
-      raw[2*j-1, 2] = knob[j]
-      raw[2*j, 1] = coil2
-      raw[2*j, 2] = -knob[j]
+    # RAW CONTAINS DUPLICATES INTENTIONALLY!!! This will be accounted for later
+    for j=1:length(unit_groups[:,1])
+      for k=1:length(unit_groups[j,:])
+        coil = unit_groups[j,k]
+        sgn = unit_sgns[j,k]
+        raw[n_per_group*j-2+k, 1] = coil
+        raw[n_per_group*j-2+k, 2] = sgn*knob[j]
+      end
     end
 
     # Now make knobs for each
-    unique_coils = unique(coil_pairs)
+    unique_coils = unique(unit_groups)
 
     if i == 1
       knob_out = open(outf, "w")
@@ -277,7 +357,7 @@ function BAGELS_2(lat, phi_start, phi_step, N_knobs; coil_regex=r".*", suffix=""
       knob_out = open(outf, "a")
     end
     
-    println(knob_out, "BAGELS$(suffix)$(Printf.format(Printf.Format("%0$(length(string(N_knobs)))i"), i)): group = {")
+    println(knob_out, "BAGELS$(suffix)$(Printf.format(Printf.Format("%0$(length(string(length(F.S))))i"), i)): group = {\t\t\t ! Singular value = $(F.S[i])")
     
     coil = unique_coils[1]
     strength = 0.
@@ -296,7 +376,7 @@ function BAGELS_2(lat, phi_start, phi_step, N_knobs; coil_regex=r".*", suffix=""
   end
 
   print("\nSingular values are: ")
-  print(F.S[1:N_knobs])
+  print(F.S)
 end
 
 
@@ -707,7 +787,7 @@ function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=tru
   # Create directories on host:
   run(`ssh lnx4200 "mkdir -p $(remote_path)"`)
   # Copy lattice file (use rsync so it remains unchanged if the files are equivalent)
-  run(`rsync -t $(lat) lnx4200:$(remote_path)`)
+  #run(`rsync -t $(lat) lnx4200:$(remote_path)`)
   # Copy files over:
   run(`scp $(track_path)/run1.sh $(track_path)/run32.sh $(track_path)/qtrack.sh $(track_path)/long_term_tracking.init $(track_path)/long_term_tracking1.init lnx4200:$(remote_path)`)
 
@@ -875,7 +955,7 @@ function get_pol_track_data(lat)
   pol_track_data_dlm = readdlm("$(path)/pol_track_data.dlm", ';')[2:end,:]
   
 
-  return PolData( pol_track_data_dlm[:,1],
+  return PolTrackData( pol_track_data_dlm[:,1],
                   pol_track_data_dlm[:,2],
                   pol_track_data_dlm[:,3],
                   pol_track_data_dlm[:,4],
