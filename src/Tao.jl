@@ -133,10 +133,10 @@ function BAGELS_1(lat, unit_bump, kick=1e-5, tol=1e-8)
   # First, obtain all combinations of bumps with desired phase advance
   if !isfile("$(path)/groups.txt")
     if !isfile("$(path)/vkickers.txt")
-      run(`tao -lat $lat -noplot -command "set ele * spin_tracking_method = sprint; set ele * kick = 0; show -write $(path)/vkickers.txt lat vkicker::* -at phi_b@f20.16; exit"`)
+      run(`tao -lat $lat -noplot -noinit -command "set ele * spin_tracking_method = sprint; set ele * kick = 0; show -write $(path)/vkickers.txt lat vkicker::* -at phi_b@f20.16; exit"`)
     end
     if !isfile("$(path)/kicks.txt")
-      run(`tao -lat $lat -noplot -command "set ele * spin_tracking_method = sprint; show -write $(path)/kicks.txt lat vkicker::* -at phi_b@f20.16 -at kick@f20.16; exit"`)
+      run(`tao -lat $lat -noplot -noinit -command "set ele * spin_tracking_method = sprint; show -write $(path)/kicks.txt lat vkicker::* -at phi_b@f20.16 -at kick@f20.16; exit"`)
     end
 
     # Read coil data and extract valid pairs
@@ -229,7 +229,7 @@ function BAGELS_1(lat, unit_bump, kick=1e-5, tol=1e-8)
   println(tao_cmd, "exit")
   close(tao_cmd)
 
-  run(`tao -lat $lat -noplot -command "call $(path)/responses_$(str_kick)/BAGELS_1.cmd"`)
+  run(`tao -lat $lat -noplot -noinit -command "call $(path)/responses_$(str_kick)/BAGELS_1.cmd"`)
 end
 
 """
