@@ -233,7 +233,7 @@ function BAGELS_1(lat, unit_bump, kick=1e-5, tol=1e-8)
 end
 
 """
-    BAGELS_2(lat, unit_bump; suffix="", outf="BAGELS.bmad", kick=1e-5))
+    BAGELS_2(lat, unit_bump; suffix="", outf="\$(lat)_BAGELS.bmad", kick=1e-5))
 
 Best Adjustment Groups for ELectron Spin (BAGELS) method step 2: peform an SVD of the 
 response matrix to obtain the best adjustment groups, based on the settings of step 1. 
@@ -247,10 +247,10 @@ The vertical closed orbit unit bump types are:
 - `unit_bump`  -- Type of unit closed orbit bump. Options are: (1) pi_bump, (2) n2pi_bump, (3) n2pi_cancel_eta_bump
 - `coil_regex` -- (Optional) Regex of coils to match to (e.g. for all coils ending in "_7" or "_11", use r".*_(?:7|11)\\b")
 - `suffix`     -- (Optional) Suffix to append to group elements generated for knobs in Bmad format
-- `outf`       -- (Optional) Output file name with group elements constructed from BAGELS, default is "BAGELS.bmad"
+- `outf`       -- (Optional) Output file name with group elements constructed from BAGELS, default is "\$(lat)_BAGELS.bmad"
 - `kick`       -- (Optional) Coil kick, default is 1e-5
 """
-function BAGELS_2(lat, unit_bump; coil_regex=r".*", suffix="", outf="BAGELS.bmad", kick=1e-5)
+function BAGELS_2(lat, unit_bump; coil_regex=r".*", suffix="", outf="$(lat)_BAGELS.bmad", kick=1e-5)
   path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
