@@ -379,11 +379,11 @@ function BAGELS_2(lat, unit_bump; coil_regex=r".*", suffix="", outf="$(lat)_BAGE
     # First column of raw contains coil name, second is knob value
     # RAW CONTAINS DUPLICATES INTENTIONALLY!!! This will be accounted for later
     for j=1:length(unit_groups[:,1])
-      for k=1:length(unit_groups[j,:])
+      for k=1:n_per_group
         coil = unit_groups[j,k]
         sgn = unit_sgns[j,k]
-        raw[n_per_group*j-2+k, 1] = coil
-        raw[n_per_group*j-2+k, 2] = sgn*knob[j]
+        raw[n_per_group*j-n_per_group+k, 1] = coil
+        raw[n_per_group*j-n_per_group+k, 2] = sgn*knob[j]
       end
     end
 
