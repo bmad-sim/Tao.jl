@@ -304,7 +304,6 @@ function BAGELS_2(lat, unit_bump; coil_regex=r".*", suffix="", outf="$(lat)_BAGE
     str_bump = "n2pi"
   elseif unit_bump == 3 # n2pi_cancel_eta_bump
     str_bump = "n2pi_cancel_eta"
-    return #TEMPORARY FOR DEVELOPMENTs
   else
     println("Unit bump type not defined!")
     return
