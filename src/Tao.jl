@@ -511,7 +511,7 @@ function pol_scan(lat, agamma0)
   println(tao_cmd, "set bmad_com spin_tracking_on = T")
   println(tao_cmd, "set ele 0 e_tot = $(agamma0[1]*m_e/a_e)")
   println(tao_cmd, "python -write $(path)/spin.dat spin_polarization")
-  for i in eachindex(agamma0)
+  for i in Iterators.drop(eachindex(agamma0), 1)
     println(tao_cmd, "set ele 0 e_tot = $(agamma0[i]*m_e/a_e)")
     println(tao_cmd, "python -append $(path)/spin.dat spin_polarization")
   end
