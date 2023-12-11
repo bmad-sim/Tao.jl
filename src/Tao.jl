@@ -5,6 +5,7 @@ using Printf
 using NLsolve
 using Interpolations
 using DataFrames, StatsBase, GLM
+using Random, Distributions
 
 export  data_path,
         PolData,
@@ -17,7 +18,9 @@ export  data_path,
         run_3rd_order_map_tracking,
         run_pol_scan_3rd_order,
         read_pol_scan_3rd_order,
-        get_pol_track_data
+        get_pol_track_data,
+        PolTrackData,
+        misalign
 
 # Returns empty string if lattice not found
 function data_path(lat)
@@ -31,6 +34,110 @@ function data_path(lat)
     return ""
   end
 end
+
+# --- Generate misalignments ---
+
+"""
+This method is NOT generalized yet:
+Generates misalignments Bmad files for each element for the ESR of the EIC
+"""
+function misalign(lat, seed, outf = "misalign-seed-$(seed).bmad")
+  path = data_path(lat)
+  if path == ""
+    println("Lattice file $(lat) not found!")
+    return
+  end
+  
+  Random.seed!(seed)
+  high_beta_dipoles = ["D1EF_6", "D1EF_8", "D2ER_6", "D2ER_8"]
+  FF_quads = ["Q0EF_6", "Q0EF_8", "Q1EF_6", "Q1EF_8", "Q1ER_6", "Q1ER_8", "Q2ER_6", "Q2ER_8"]
+
+  # Get file of all elements and their types
+  if !isfile("$(path)/eles.txt")
+    run(`tao -lat $lat -noplot -noinit -command "show -write $(path)/eles.txt lat * -at s@f20.16; exit"`)
+  end
+  eles_txt = readdlm("$(path)/eles.txt", skipstart=2)
+  row_end = findlast(x->x=="END", eles_txt[:,2])
+  ele_names = eles_txt[1:row_end,2]
+  ele_types = eles_txt[1:row_end,3]
+
+  out = open(outf, "w")
+  i =  1
+  while i<length(ele_types)
+    if ele_types[i] in high_beta_dipoles
+      x_offset = rand(Normal(0,0.0002)) # 0.2mm
+      y_offset = rand(Normal(0,0.0002)) # 0.2mm
+      roll = rand(Normal(0,0.5e-3))     # 0.5 mrad
+      dBpB = rand(Normal(0,0.0005))     # 0.05% field error 
+      println(out, "$(ele_names[i])[x_offset] = $(x_offset)")
+      println(out, "$(ele_names[i])[y_offset] = $(y_offset)")
+      println(out, "$(ele_names[i])[roll] = $(roll)")
+      println(out, "$(ele_names[i])[dg] = $(ele_names[i])[g]*$(dBpB)")
+      i = i+1
+    elseif ele_types[i] in FF_quads
+      x_offset = rand(Normal(0,0.0001)) # 0.1mm
+      y_offset = rand(Normal(0,0.0001)) # 0.1mm
+      roll = rand(Normal(0,0.5e-3))     # 0.5 mrad
+      dBpB = rand(Normal(0,0.0005))     # 0.05% field error 
+      println(out, "$(ele_names[i])[x_offset] = $(x_offset)")
+      println(out, "$(ele_names[i])[y_offset] = $(y_offset)")
+      println(out, "$(ele_names[i])[tilt] = $(roll)")
+      println(out, "$(ele_names[i])[k1] = $(ele_names[i])[k1]*$(dBpB+1)")
+      i = i+1
+    elseif ele_types[i] == "Multipole"      # All multipoles in the lattice are edges of bends
+      x_offset = rand(Normal(0,0.0002)) # 0.2mm
+      y_offset = rand(Normal(0,0.0002)) # 0.2mm
+      roll = rand(Normal(0,0.5e-3))     # 0.5 mrad
+      dBpB = rand(Normal(0,0.001))      # 0.1% field error 
+      println(out, "$(ele_names[i])[x_offset] = $(x_offset)")
+      println(out, "$(ele_names[i])[y_offset] = $(y_offset)")
+      println(out, "$(ele_names[i])[tilt] = $(roll)")
+      println(out, "$(ele_names[i])[k1l] = $(ele_names[i])[k1l]*$(dBpB+1)")
+      
+      println(out, "$(ele_names[i+1])[x_offset] = $(x_offset)")
+      println(out, "$(ele_names[i+1])[y_offset] = $(y_offset)")
+      println(out, "$(ele_names[i+1])[roll] = $(roll)")
+      println(out, "$(ele_names[i+1])[dg] = $(ele_names[i+1])[g]*$(dBpB)")
+
+      println(out, "$(ele_names[i+2])[x_offset] = $(x_offset)")
+      println(out, "$(ele_names[i+2])[y_offset] = $(y_offset)")
+      println(out, "$(ele_names[i+2])[tilt] = $(roll)")
+      println(out, "$(ele_names[i+2])[k1l] = $(ele_names[i+2])[k1l]*$(dBpB+1)")
+      i = i+3
+    elseif ele_types[i] == "Sbend"
+      x_offset = rand(Normal(0,0.0002)) # 0.2mm
+      y_offset = rand(Normal(0,0.0002)) # 0.2mm
+      roll = rand(Normal(0,0.5e-3))     # 0.5 mrad
+      dBpB = rand(Normal(0,0.001))      # 0.1% field error 
+      println(out, "$(ele_names[i])[x_offset] = $(x_offset)")
+      println(out, "$(ele_names[i])[y_offset] = $(y_offset)")
+      println(out, "$(ele_names[i])[roll] = $(roll)")
+      println(out, "$(ele_names[i])[dg] = $(ele_names[i])[g]*$(dBpB)")
+      i = i+1
+    elseif ele_types[i] == "Quadrupole"
+      x_offset = rand(Normal(0,0.0002)) # 0.2mm
+      y_offset = rand(Normal(0,0.0002)) # 0.2mm
+      roll = rand(Normal(0,0.5e-3))     # 0.5 mrad
+      dBpB = rand(Normal(0,0.001))      # 0.1% field error 
+      println(out, "$(ele_names[i])[x_offset] = $(x_offset)")
+      println(out, "$(ele_names[i])[y_offset] = $(y_offset)")
+      println(out, "$(ele_names[i])[tilt] = $(roll)")
+      println(out, "$(ele_names[i])[k1] = $(ele_names[i])[k1]*$(dBpB+1)")
+    elseif ele_types[i] == "Sextupole"
+      x_offset = rand(Normal(0,0.0002)) # 0.2mm
+      y_offset = rand(Normal(0,0.0002)) # 0.2mm
+      roll = rand(Normal(0,0.5e-3))     # 0.5 mrad
+      dBpB = rand(Normal(0,0.002))      # 0.2% field error 
+      println(out, "$(ele_names[i])[x_offset] = $(x_offset)")
+      println(out, "$(ele_names[i])[y_offset] = $(y_offset)")
+      println(out, "$(ele_names[i])[tilt] = $(roll)")
+      println(out, "$(ele_names[i])[k2] = $(ele_names[i])[k2]*$(dBpB+1)")
+    end
+    i = i+1
+  end
+  close(out)
+end
+
 
 # --- Polarization routines ---
 """
@@ -117,6 +224,8 @@ function BAGELS_1(lat, unit_bump, kick=1e-5, tol=1e-8)
     str_bump = "n2pi"
   elseif unit_bump == 3 # n2pi_cancel_eta_bump
     str_bump = "n2pi_cancel_eta"
+  elseif unit_bump == 4 # 2pi_bump
+    str_bump = "2pi"
   else
     println("Unit bump type not defined!")
     return
@@ -152,7 +261,7 @@ function BAGELS_1(lat, unit_bump, kick=1e-5, tol=1e-8)
     if unit_bump == 1     # pi_bump
       for i=1:length(coil_names)-1
         for j=i+1:length(coil_names)
-          if abs(rem(coil_phis[j] - coil_phis[i] - pi, Inf, RoundNearest)) < tol
+          if coil_phis[j] - coil_phis[i] - pi < tol
             push!(unit_groups_list, coil_names[i])
             push!(unit_groups_list, coil_names[j])
             push!(unit_sgns_list, +1.)
@@ -220,6 +329,20 @@ function BAGELS_1(lat, unit_bump, kick=1e-5, tol=1e-8)
         end
       end
       n_per_group = 4
+    elseif unit_bump == 4 # 2pi bump
+      for i=1:length(coil_names)-1
+        for j=i+1:length(coil_names)
+          if coil_phis[j] - coil_phis[i] - 2*pi < tol
+            push!(unit_groups_list, coil_names[i])
+            push!(unit_groups_list, coil_names[j]) 
+            push!(unit_sgns_list, +1.)
+            push!(unit_sgns_list, -1.)  # Coils in 2pi bumps have opposite kick sign but same strength
+            push!(unit_curkicks_list, coil_kicks[i])
+            push!(unit_curkicks_list, coil_kicks[j])
+          end
+        end
+      end
+      n_per_group = 2
     end
 
     # Info to store is: each coil in the group, each of their current strengths, and each of their kick sgns/mags
@@ -281,6 +404,7 @@ The vertical closed orbit unit bump types are:
 (1) pi_bump              -- No coupling cancellation, no dispersion cancellation
 (2) n2pi_bump            -- Coupling cancellation, no dispersion cancellation
 (3) n2pi_cancel_eta_bump -- Coupling and dispersion cancellation
+(4) 2pi_bump
 
 ### Input
 - `lat`        -- lat file name
@@ -304,6 +428,8 @@ function BAGELS_2(lat, unit_bump; coil_regex=r".*", suffix="", outf="$(lat)_BAGE
     str_bump = "n2pi"
   elseif unit_bump == 3 # n2pi_cancel_eta_bump
     str_bump = "n2pi_cancel_eta"
+  elseif unit_bump == 4 # 2pi_bump
+    str_bump = "2pi"
   else
     println("Unit bump type not defined!")
     return
@@ -639,7 +765,7 @@ function get_pol_data(lat)
     return
   end
   if !isfile("$(path)/pol_data.dlm")
-    println("First-order polarization data not generated for lattice $(lattice). Please use the pol_scan method to generate the data.")
+    println("First-order polarization data not generated for lattice $(lat). Please use the pol_scan method to generate the data.")
   end
   pol_data_dlm = readdlm("$(path)/pol_data.dlm", ';')[2:end,:]
   
@@ -833,7 +959,7 @@ function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=tru
 
 
   # Submit the tracking on host
-  run(`ssh lnx4200 "cd $(remote_path); sh qtrack.sh"`)
+  run(`ssh lnx4200 "cd $(remote_path)) sh qtrack.sh"`)
 end
 
 
@@ -894,7 +1020,7 @@ function read_pol_scan_3rd_order(lat, n_damp)
     mkpath(track_path)
   end
   remote_path = "~/trackings_jl" * track_path
-  run(`ssh lnx4200 "cd $(remote_path); find . -name "data.ave" -o -name "data.emit" -o -name "data.sigma" | find  -name "data.ave" -o -name "data.emit" -o -name "data.sigma" | tar -czvf data.tar.gz -T -"`)
+  run(`ssh lnx4200 "cd $(remote_path) find . -name "data.ave" -o -name "data.emit" -o -name "data.sigma" | find  -name "data.ave" -o -name "data.emit" -o -name "data.sigma" | tar -czvf data.tar.gz -T -"`)
   run(`scp lnx4200:$(remote_path)/data.tar.gz $(track_path)`)
   run(`tar -xzvf $(track_path)/data.tar.gz -C $(track_path)`)
 
