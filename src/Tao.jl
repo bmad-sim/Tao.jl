@@ -22,6 +22,8 @@ export  data_path,
         PolTrackData,
         misalign
 
+
+
 # Returns empty string if lattice not found
 function data_path(lat)
   if isfile(lat)
@@ -199,15 +201,15 @@ end
 Best Adjustment Groups for ELectron Spin (BAGELS) method step 1: calculates the response of 
 dn/ddelta with all combinations of the inputted vertical closed orbit bump types as the 
 "unit bumps". The types are:
-(1) pi_bump              -- Delocalized coupling, delocalized dispersion
-(2) n2pi_bump            -- Localized coupling, delocalized dispersion
-(3) n2pi_cancel_eta_bump -- Localized coupling, localized dispersion
-(4) 2pi_bump             -- Localized coupling, delocalized dispersion
-(5) pi_cancel_eta_bump   -- Delocalized coupling, localized dispersion
+1. `pi` bump              -- Delocalized coupling, delocalized dispersion
+2. `n2pi` bump            -- Localized coupling, delocalized dispersion
+3. `n2pi_cancel_eta` bump -- Localized coupling, localized dispersion
+4. `2pi` bump             -- Localized coupling, delocalized dispersion
+5. `pi_cancel_eta` bump   -- Delocalized coupling, localized dispersion
 
 ### Input
 - `lat`       -- lat file name
-- `unit_bump` -- Type of unit closed orbit bump. Options are: (1) pi_bump, (2) n2pi_bump, (3) n2pi_cancel_eta_bump
+- `unit_bump` -- Type of unit closed orbit bump. Options are: (1) `pi`, (2) `n2pi`, (3) `n2pi_cancel_eta`, (4) `2pi`, (5) `pi_cancel_eta`
 - `kick`      -- (Optional) Coil kick, default is 1e-5
 - `tol`       -- (Optional) Tolerance for difference in phase, default is 1e-8
 """
@@ -433,18 +435,18 @@ end
 Best Adjustment Groups for ELectron Spin (BAGELS) method step 2: peform an SVD of the 
 response matrix to obtain the best adjustment groups, based on the settings of step 1. 
 The vertical closed orbit unit bump types are:
-(1) pi_bump              -- Delocalized coupling, delocalized dispersion
-(2) n2pi_bump            -- Localized coupling, delocalized dispersion
-(3) n2pi_cancel_eta_bump -- Localized coupling, localized dispersion
-(4) 2pi_bump             -- Localized coupling, delocalized dispersion
-(5) pi_cancel_eta_bump   -- Delocalized coupling, localized dispersion
+1. `pi` bump              -- Delocalized coupling, delocalized dispersion
+2. `n2pi` bump            -- Localized coupling, delocalized dispersion
+3. `n2pi_cancel_eta` bump -- Localized coupling, localized dispersion
+4. `2pi` bump             -- Localized coupling, delocalized dispersion
+5. `pi_cancel_eta` bump   -- Delocalized coupling, localized dispersion
 
 ### Input
-- `lat`        -- lat file name
-- `unit_bump`  -- Type of unit closed orbit bump. Options are: (1) pi_bump, (2) n2pi_bump, (3) n2pi_cancel_eta_bump
-- `coil_regex` -- (Optional) Regex of coils to match to (e.g. for all coils ending in "_7" or "_11", use r".*_(?:7|11)\\b")
+- `lat`       -- lat file name
+- `unit_bump` -- Type of unit closed orbit bump. Options are: (1) `pi`, (2) `n2pi`, (3) `n2pi_cancel_eta`, (4) `2pi`, (5) `pi_cancel_eta`
+- `coil_regex` -- (Optional) Regex of coils to match to (e.g. for all coils ending in `_7` or `_11`, use `r".*_(?:7|11)\\b"`)
 - `suffix`     -- (Optional) Suffix to append to group elements generated for knobs in Bmad format
-- `outf`       -- (Optional) Output file name with group elements constructed from BAGELS, default is "\$(lat)_BAGELS.bmad"
+- `outf`       -- (Optional) Output file name with group elements constructed from BAGELS, default is `$(lat)_BAGELS.bmad`
 - `kick`       -- (Optional) Coil kick, default is 1e-5
 """
 function BAGELS_2(lat, unit_bump; coil_regex=r".*", suffix="", outf="$(lat)_BAGELS.bmad", kick=1e-5)
