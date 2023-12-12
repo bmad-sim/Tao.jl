@@ -54,7 +54,7 @@ function misalign(lat, seed, outf = "misalign-seed-$(seed).bmad")
 
   # Get file of all elements and their types
   if !isfile("$(path)/eles.txt")
-    run(`tao -lat $lat -noplot -noinit -command "show -write $(path)/eles.txt lat * -at s@f20.16; exit"`)
+    run(`tao -lat $lat -noplot -noinit -nostart -command "show -write $(path)/eles.txt lat * -at s@f20.16; exit"`)
   end
   eles_txt = readdlm("$(path)/eles.txt", skipstart=2)
   row_end = findlast(x->x=="END", eles_txt[:,2])
@@ -199,9 +199,11 @@ end
 Best Adjustment Groups for ELectron Spin (BAGELS) method step 1: calculates the response of 
 dn/ddelta with all combinations of the inputted vertical closed orbit bump types as the 
 "unit bumps". The types are:
-(1) pi_bump              -- No coupling cancellation, no dispersion cancellation
-(2) n2pi_bump            -- Coupling cancellation, no dispersion cancellation
-(3) n2pi_cancel_eta_bump -- Coupling and dispersion cancellation
+(1) pi_bump              -- Delocalized coupling, delocalized dispersion
+(2) n2pi_bump            -- Localized coupling, delocalized dispersion
+(3) n2pi_cancel_eta_bump -- Localized coupling, localized dispersion
+(4) 2pi_bump             -- Localized coupling, delocalized dispersion
+(5) pi_cancel_eta_bump   -- Delocalized coupling, localized dispersion
 
 ### Input
 - `lat`       -- lat file name
@@ -226,6 +228,8 @@ function BAGELS_1(lat, unit_bump, kick=1e-5, tol=1e-8)
     str_bump = "n2pi_cancel_eta"
   elseif unit_bump == 4 # 2pi_bump
     str_bump = "2pi"
+  elseif unit_bump == 5 # pi_cancel_eta_bump
+    str_bump = "pi_cancel_eta"
   else
     println("Unit bump type not defined!")
     return
@@ -241,10 +245,10 @@ function BAGELS_1(lat, unit_bump, kick=1e-5, tol=1e-8)
   # First, obtain all combinations of bumps with desired phase advance
   if !isfile("$(path)/groups.txt")
     if !isfile("$(path)/vkickers.txt")
-      run(`tao -lat $lat -noplot -noinit -command "set ele * spin_tracking_method = sprint; set ele * kick = 0; show -write $(path)/vkickers.txt lat vkicker::* -at phi_b@f20.16; exit"`)
+      run(`tao -lat $lat -noplot -noinit -nostart -command "set ele * spin_tracking_method = sprint; set ele * kick = 0; show -write $(path)/vkickers.txt lat vkicker::* -at phi_b@f20.16; exit"`)
     end
     if !isfile("$(path)/kicks.txt")
-      run(`tao -lat $lat -noplot -noinit -command "set ele * spin_tracking_method = sprint; show -write $(path)/kicks.txt lat vkicker::* -at phi_b@f20.16 -at kick@f20.16; exit"`)
+      run(`tao -lat $lat -noplot -noinit -nostart -command "set ele * spin_tracking_method = sprint; show -write $(path)/kicks.txt lat vkicker::* -at phi_b@f20.16 -at kick@f20.16; exit"`)
     end
 
     # Read coil data and extract valid pairs
@@ -261,7 +265,7 @@ function BAGELS_1(lat, unit_bump, kick=1e-5, tol=1e-8)
     if unit_bump == 1     # pi_bump
       for i=1:length(coil_names)-1
         for j=i+1:length(coil_names)
-          if coil_phis[j] - coil_phis[i] - pi < tol
+          if abs(coil_phis[j] - coil_phis[i] - pi) < tol
             push!(unit_groups_list, coil_names[i])
             push!(unit_groups_list, coil_names[j])
             push!(unit_sgns_list, +1.)
@@ -332,7 +336,7 @@ function BAGELS_1(lat, unit_bump, kick=1e-5, tol=1e-8)
     elseif unit_bump == 4 # 2pi bump
       for i=1:length(coil_names)-1
         for j=i+1:length(coil_names)
-          if coil_phis[j] - coil_phis[i] - 2*pi < tol
+          if abs(coil_phis[j] - coil_phis[i] - 2*pi) < tol
             push!(unit_groups_list, coil_names[i])
             push!(unit_groups_list, coil_names[j]) 
             push!(unit_sgns_list, +1.)
@@ -343,6 +347,34 @@ function BAGELS_1(lat, unit_bump, kick=1e-5, tol=1e-8)
         end
       end
       n_per_group = 2
+    elseif unit_bump == 5 # pi_cancel_eta bump
+      for i=1:length(coil_names)-3
+        for j=i+1:length(coil_names)-2
+          for k=j+1:length(coil_names)-1
+            for l=k+1:length(coil_names)
+              # First set and second set must be separate pi bump:
+              if abs(coil_phis[j] - coil_phis[i]- pi) < tol && abs(coil_phis[l] - coil_phis[k] - pi) < tol
+                # Now check if either 2*pi apart
+                if abs(rem(coil_phis[j] - coil_phis[k], 2*pi, RoundNearest)) < tol  
+                  push!(unit_groups_list, coil_names[i])
+                  push!(unit_groups_list, coil_names[j])
+                  push!(unit_groups_list, coil_names[k])
+                  push!(unit_groups_list, coil_names[l])
+                  push!(unit_sgns_list, +1.)
+                  push!(unit_sgns_list, +1.)  
+                  push!(unit_sgns_list, +1.)  
+                  push!(unit_sgns_list, +1.)  
+                  push!(unit_curkicks_list, coil_kicks[i])
+                  push!(unit_curkicks_list, coil_kicks[j])
+                  push!(unit_curkicks_list, coil_kicks[k])
+                  push!(unit_curkicks_list, coil_kicks[l])
+                end
+              end
+            end
+          end
+        end
+      end
+      n_per_group = 4
     end
 
     # Info to store is: each coil in the group, each of their current strengths, and each of their kick sgns/mags
@@ -392,7 +424,7 @@ function BAGELS_1(lat, unit_bump, kick=1e-5, tol=1e-8)
   println(tao_cmd, "exit")
   close(tao_cmd)
 
-  run(`tao -lat $lat -noplot -noinit -command "call $(path)/responses_$(str_kick)/BAGELS_1.cmd"`)
+  run(`tao -lat $lat -noplot -noinit -nostart -command "call $(path)/responses_$(str_kick)/BAGELS_1.cmd"`)
 end
 
 """
@@ -401,10 +433,11 @@ end
 Best Adjustment Groups for ELectron Spin (BAGELS) method step 2: peform an SVD of the 
 response matrix to obtain the best adjustment groups, based on the settings of step 1. 
 The vertical closed orbit unit bump types are:
-(1) pi_bump              -- No coupling cancellation, no dispersion cancellation
-(2) n2pi_bump            -- Coupling cancellation, no dispersion cancellation
-(3) n2pi_cancel_eta_bump -- Coupling and dispersion cancellation
-(4) 2pi_bump
+(1) pi_bump              -- Delocalized coupling, delocalized dispersion
+(2) n2pi_bump            -- Localized coupling, delocalized dispersion
+(3) n2pi_cancel_eta_bump -- Localized coupling, localized dispersion
+(4) 2pi_bump             -- Localized coupling, delocalized dispersion
+(5) pi_cancel_eta_bump   -- Delocalized coupling, localized dispersion
 
 ### Input
 - `lat`        -- lat file name
@@ -430,6 +463,8 @@ function BAGELS_2(lat, unit_bump; coil_regex=r".*", suffix="", outf="$(lat)_BAGE
     str_bump = "n2pi_cancel_eta"
   elseif unit_bump == 4 # 2pi_bump
     str_bump = "2pi"
+  elseif unit_bump == 5 # pi_cancel_eta_bump
+    str_bump = "pi_cancel_eta"
   else
     println("Unit bump type not defined!")
     return
@@ -646,7 +681,7 @@ function pol_scan(lat, agamma0)
   close(tao_cmd)
 
   # Execute the scan
-  run(`tao -lat $lat -noplot -noinit -command "call $(path)/spin.tao"`)
+  run(`tao -lat $lat -noplot -noinit -nostart -command "call $(path)/spin.tao"`)
 
   # Calculate important quantities and store in data
   data = readdlm("$(path)/spin.dat", ';')[:,4]
@@ -821,7 +856,7 @@ ln -s /nfs/acc/user/<NetID> ~/trackings_jl
 This must be done because storage is limited in the users' home directory, but not 
 in /nfs/acc/user/<NetID>
 """
-function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=true)
+function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=true, sh=nothing)
   if (use_data_path)
     path = data_path(lat)
     if path == ""
@@ -944,22 +979,56 @@ function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=tru
                             """
 
   remote_path = "~/trackings_jl" * track_path
-  write("$(track_path)/run1.sh", run1_sh)
-  write("$(track_path)/run32.sh", run32_sh)
-  write("$(track_path)/qtrack.sh", qtrack_sh)
-  write("$(track_path)/long_term_tracking.init", long_term_tracking_init)
-  write("$(track_path)/long_term_tracking1.init", long_term_tracking1_init)
   
-  # Create directories on host:
-  run(`ssh lnx4200 "mkdir -p $(remote_path)"`)
-  # Copy lattice file (use rsync so it remains unchanged if the files are equivalent)
-  run(`rsync -t $(lat) lnx4200:$(remote_path)`)
-  # Copy files over:
-  run(`scp $(track_path)/run1.sh $(track_path)/run32.sh $(track_path)/qtrack.sh $(track_path)/long_term_tracking.init $(track_path)/long_term_tracking1.init lnx4200:$(remote_path)`)
+  if isnothing(sh)
+    write("$(track_path)/run1.sh", run1_sh)
+    write("$(track_path)/run32.sh", run32_sh)
+    write("$(track_path)/qtrack.sh", qtrack_sh)
+    write("$(track_path)/long_term_tracking.init", long_term_tracking_init)
+    write("$(track_path)/long_term_tracking1.init", long_term_tracking1_init)
+    # Create directories on host:
+    run(`ssh lnx4200 "mkdir -p $(remote_path)"`)
+    # Copy lattice file (use rsync so it remains unchanged if the files are equivalent)
+    run(`rsync -t $(lat) lnx4200:$(remote_path)`)
+    # Copy files over:
+    run(`scp $(track_path)/run1.sh $(track_path)/run32.sh $(track_path)/qtrack.sh $(track_path)/long_term_tracking.init $(track_path)/long_term_tracking1.init lnx4200:$(remote_path)`)
+    # Submit the tracking on host
+    run(`ssh lnx4200 "cd $(remote_path) sh qtrack.sh"`)
+  else
+    # Create directories on host:
+    println(sh, "mkdir -p $(remote_path)")
+    lat_txt = ""
+    for line in readlines(lat)
+      lat_txt = lat_txt * line * "\n"
+    end
+    lat_txt = replace(lat_txt, "\"" => "\\\"")
+    run1_sh = replace(run1_sh, "\"" => "\\\"")
+    run32_sh = replace(run32_sh, "\"" => "\\\"")
+    qtrack_sh = replace(qtrack_sh, "\"" => "\\\"")
+    long_term_tracking1_init = replace(long_term_tracking1_init, "\"" => "\\\"")
+    long_term_tracking_init = replace(long_term_tracking_init, "\"" => "\\\"")
 
+    lat_txt = replace(lat_txt, "\$" => "\\\$")
+    run1_sh = replace(run1_sh, "\$" => "\\\$")
+    run32_sh = replace(run32_sh, "\$" => "\\\$")
+    qtrack_sh = replace(qtrack_sh, "\$" => "\\\$")
+    long_term_tracking1_init = replace(long_term_tracking1_init, "\$" => "\\\$")
+    long_term_tracking_init = replace(long_term_tracking_init, "\$" => "\\\$")
 
-  # Submit the tracking on host
-  run(`ssh lnx4200 "cd $(remote_path)) sh qtrack.sh"`)
+    if (length("echo \"lat_txt\" > $(remote_path)") > 2621440)
+      println("ERROR: lnx4200 terminal command line characters exceeded")'
+      return
+    end
+
+    println(sh, "echo \"$(lat_txt)\" > $(remote_path)/$(basename(lat))")
+    println(sh, "echo \"$(run1_sh)\" > $(remote_path)/run1.sh")
+    println(sh, "echo \"$(run32_sh)\" > $(remote_path)/run32.sh")
+    println(sh, "echo \"$(qtrack_sh)\" > $(remote_path)/qtrack.sh")
+    println(sh, "echo \"$(long_term_tracking_init)\" > $(remote_path)/long_term_tracking.init")
+    println(sh, "echo \"$(long_term_tracking1_init)\" > $(remote_path)/long_term_tracking1.init")
+    println(sh, "cd $(remote_path)")
+    println(sh, "sh qtrack.sh")
+  end
 end
 
 
@@ -972,7 +1041,7 @@ documentation before running this routine.
 This routine sets up and submits the parallel 3rd order map tracking 
 jobs to the CLASSE cluster for the range of `agamma0` specified. 
 """
-function run_pol_scan_3rd_order(lat, n_particles, n_turns, agamma0)
+@inline function run_pol_scan_3rd_order(lat, n_particles, n_turns, agamma0, sh)
   path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
@@ -997,7 +1066,7 @@ function run_pol_scan_3rd_order(lat, n_particles, n_turns, agamma0)
       close(latf)
     end
 
-    run_3rd_order_map_tracking(temp_lat, n_particles, n_turns; use_data_path=false)
+    run_3rd_order_map_tracking(temp_lat, n_particles, n_turns; use_data_path=false,sh = sh)
   end
 end
 
