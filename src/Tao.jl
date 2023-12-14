@@ -17,6 +17,7 @@ export  data_path,
         get_pol_data,
         run_3rd_order_map_tracking,
         run_pol_scan_3rd_order,
+        download_pol_scan_3rd_order,
         read_pol_scan_3rd_order,
         get_pol_track_data,
         PolTrackData,
@@ -446,7 +447,7 @@ The vertical closed orbit unit bump types are:
 - `unit_bump` -- Type of unit closed orbit bump. Options are: (1) `pi`, (2) `n2pi`, (3) `n2pi_cancel_eta`, (4) `2pi`, (5) `pi_cancel_eta`
 - `coil_regex` -- (Optional) Regex of coils to match to (e.g. for all coils ending in `_7` or `_11`, use `r".*_(?:7|11)\\b"`)
 - `suffix`     -- (Optional) Suffix to append to group elements generated for knobs in Bmad format
-- `outf`       -- (Optional) Output file name with group elements constructed from BAGELS, default is `$(lat)_BAGELS.bmad`
+- `outf`       -- (Optional) Output file name with group elements constructed from BAGELS, default is `\$(lat)_BAGELS.bmad`
 - `kick`       -- (Optional) Coil kick, default is 1e-5
 """
 function BAGELS_2(lat, unit_bump; coil_regex=r".*", suffix="", outf="$(lat)_BAGELS.bmad", kick=1e-5)
@@ -1074,12 +1075,12 @@ end
 
 
 """
-    read_pol_scan_3rd_order(lat, n_damp)
+    download_pol_scan_3rd_order(lat, sh)
 
 This routine reads the results of run_pol_scan_3rd_order from the CLASSE 
 computer and creates a PolTrackData for this lattice.
 """
-function read_pol_scan_3rd_order(lat, n_damp)
+function download_pol_scan_3rd_order(lat, sh)
   path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
@@ -1091,8 +1092,22 @@ function read_pol_scan_3rd_order(lat, n_damp)
     mkpath(track_path)
   end
   remote_path = "~/trackings_jl" * track_path
-  run(`ssh lnx4200 "cd $(remote_path) find . -name "data.ave" -o -name "data.emit" -o -name "data.sigma" | find  -name "data.ave" -o -name "data.emit" -o -name "data.sigma" | tar -czvf data.tar.gz -T -"`)
-  run(`scp lnx4200:$(remote_path)/data.tar.gz $(track_path)`)
+  println(sh, "cd $(remote_path)")
+  println(sh, "find . -name \"data.ave\" -o -name \"data.emit\" -o -name \"data.sigma\" | find  -name \"data.ave\" -o -name \"data.emit\" -o -name \"data.sigma\" | tar -czvf data.tar.gz -T -")
+  println(sh, "scp data.tar.gz \${SSH_CONNECTION%% *}:$(track_path)")
+end
+
+function read_pol_scan_3rd_order(lat, n_damp)
+  path = data_path(lat)
+  if path == ""
+    println("Lattice file $(lat) not found!")
+    return
+  end    
+  
+  track_path = "$(path)/3rd_order_map"
+  if !ispath(track_path)
+    mkpath(track_path)
+  end
   run(`tar -xzvf $(track_path)/data.tar.gz -C $(track_path)`)
 
   # Get the tracking subdirs
