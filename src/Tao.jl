@@ -15,13 +15,18 @@ export  data_path,
         calc_T,
         pol_scan,
         get_pol_data,
-        run_3rd_order_map_tracking,
-        run_pol_scan_3rd_order,
-        download_pol_scan_3rd_order,
-        read_pol_scan_3rd_order,
+        run_map_tracking,
+        run_pol_scan,
+        download_pol_scan,
+        read_pol_scan,
         get_pol_track_data,
         PolTrackData,
-        misalign
+        misalign,
+        groups_to_one_knob,
+        run_pol_tune_scan,
+        download_pol_tune_scan,
+        read_pol_tune_scan,
+        get_pol_tune_data
 
 
 
@@ -37,6 +42,82 @@ function data_path(lat)
     return ""
   end
 end
+
+
+"""
+    groups_to_one_knob(groupsf, name, outf)
+
+This function converts all of the groups defined in the file `groupsf`, with their corresponding 
+`X` vars set, to a single group that one can scale up and down. As of now, this only works for 1
+variable in each group (which must be named `X`) and one attribute set per element (an element 
+cannot have both `kick` and `k1` set in the groups, for example). E.g. if `groupsf` contains
+```
+G1: group = {CV01[kick]: 1*X, CV02[kick] = 1.5*X}, var = {X}, X = 2
+G2: group = {CV01[kick]: 0.5*X, CV02[kick] = 1*X}, var = {X}, X = -1
+```
+
+and `name = G3`, then this is written in `outf` as
+
+`G3: group = {CV01[kick]: (2 - 0.5)*X, CV02[kick]: (3 - 1)*X}, X = 0`
+
+Any `oldX` in the group elements are ignored. This method is useful when creating one knob out of 
+a BAGELS solution consisting of many different knobs, for example.
+"""
+function groups_to_one_knob(groupsf, name, outf)
+  txt = read(groupsf, String)
+
+  # Get all the groups
+  group_idxs = findall("group", txt)
+  # Elements
+  eles = []
+  # Corresponding attribute for each element
+  atts = []
+
+  # New expressions for element in one group
+  exprs = [] 
+
+  for i=1:length(group_idxs)
+    if i != length(group_idxs)
+      grouptxt = txt[group_idxs[i][end]:group_idxs[i+1][begin]]
+    else
+      grouptxt = txt[group_idxs[i][end]:end]
+    end
+
+    # Get the X for the group: remove whitespace, find X=<number>,
+    X = parse(Float64, replace(grouptxt, " " => "")[findfirst(r"X=(.*?)(?=,|\n|$)\b", replace(grouptxt, " " => ""))][3:end])
+
+    # Substitute the X in the expressions
+    grouptxtnew = replace(grouptxt, "X" => "$(X)")
+
+    # Now go through each expression in the group
+    for m in eachmatch(r"\w*\[\w*\](.+?)(?=,|})", grouptxtnew)
+      ele = m.match[findfirst(r"\w*\[", m.match)][1:end-1]
+      ele_idx = findfirst(x->x==ele, eles)
+      if isnothing(ele_idx)
+        push!(eles, ele)
+        push!(exprs, "")
+        push!(atts, strip(m.match[findfirst('[', m.match)+1:findlast(']', m.match)-1]))
+        ele_idx = length(eles)
+      end
+      exprs[ele_idx] = exprs[ele_idx] * "+(" * strip(m.match[findlast(':', m.match)+1:end]) * ")"
+    end
+  end
+
+  # now write the group element
+  knob_out = open(outf, "w")
+  println(knob_out, "$(name): group = {")
+  for i=1:length(eles)
+    if i != length(eles)
+      println(knob_out, "$(eles[i])[$(atts[i])]: ($(exprs[i]))*X,")
+    else
+      println(knob_out, "$(eles[i])[$(atts[i])]: ($(exprs[i]))*X")
+    end
+  end
+  println(knob_out, "}, var = {X}")
+  close(knob_out)
+end
+
+
 
 # --- Generate misalignments ---
 
@@ -194,6 +275,19 @@ struct PolTrackData
   P_t
   T_du_t 
   T_dd_t 
+end
+
+"""
+Struct for storing the tau_depol from tracking tune scan
+"""
+struct DepolTuneData
+  Qx
+  Qy
+  Qz
+  tau_dep
+  emit_a
+  emit_b
+  emit_c
 end
 
 """
@@ -646,6 +740,7 @@ function calc_T(P_dk, tau_eq; P_0 = 0.85, P_min_avg = 0.7)
 end
 
 
+
 """
     pol_scan(lat, agamma0)
 
@@ -837,7 +932,62 @@ end
 
 
 """
-  run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=true)
+    run_pol_tune_scan(lat,  n_particles, n_turns, order, Qx_range, Qy_range, Qz_range, sh)
+
+Runs a tune scan for the grid defined in Qx and Qy with 1st order map
+tracking with radiation.
+
+"""
+function run_pol_tune_scan(lat,  n_particles, n_turns, order, Qx_range, Qy_range, Qz_range, sh)
+  path = data_path(lat)
+  if path == ""
+    println("Lattice file $(lat) not found!")
+    return
+  end
+  if order == 1
+    track_path = "$(path)/1st_order_map"
+  elseif order == 2
+    track_path = "$(path)/2nd_order_map"
+  elseif order == 3
+    track_path = "$(path)/3rd_order_map"
+  elseif order == 0
+    track_path = "$(path)/bmad"
+  else
+    error("only order < 3 or Bmad tracking supported right now")
+  end
+  if !ispath(track_path)
+    mkpath(track_path)
+  end
+
+  # Create subdirectories for all tunes
+  for Qx in Qx_range
+    subdirname1 = Printf.format(Printf.Format("%02.4f"), Qx)
+    for Qy in Qy_range
+      subdirname2 = Printf.format(Printf.Format("%02.4f"), Qy)
+      for Qz in Qz_range
+        subdirname3 = Printf.format(Printf.Format("%02.4f"), Qz)
+        # ONLY CREATE NEW LAT FILES IF THEY DON'T EXIST YET
+        temp_lat = "$(track_path)/$(subdirname1)/$(subdirname2)/$(subdirname3)/$(lat)_$(subdirname1)_$(subdirname2)_$(subdirname3)"
+        tao_cmd = open("$(path)/spin_tune_scan.tao", "w")
+        println(tao_cmd, "set tune $Qx $Qy -mask *,~hq%_*_*; set z_tune $Qz")
+        println(tao_cmd, "write bmad -form one_file $(temp_lat)")
+        println(tao_cmd, "exit")
+        close(tao_cmd)
+        if !isfile(temp_lat)
+          mkpath("$(track_path)/$(subdirname1)/$(subdirname2)/$(subdirname3)")
+          cp(lat,temp_lat)
+          run(`tao -lat $lat -noplot -noinit -nostart -command "call $(path)/spin_tune_scan.tao"`)
+        end
+        # Run the tracking
+        run_map_tracking(temp_lat, n_particles, n_turns, order; use_data_path=false,sh = sh)
+      end
+    end
+  end
+end
+
+
+"""
+  run_map_tracking(lat, n_particles, n_turns, order; use_data_path=true, sh=nothing)
 
 NOTE: THIS FUNCTION ONLY WORKS WHEN LOGGED INTO A COMPUTER ON THE CLASSE VPN!
 This routine sets up 3rd order map tracking with the bends split for radiation, 
@@ -859,20 +1009,43 @@ ln -s /nfs/acc/user/<NetID> ~/trackings_jl
 This must be done because storage is limited in the users' home directory, but not 
 in /nfs/acc/user/<NetID>
 """
-function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=true, sh=nothing)
+function run_map_tracking(lat, n_particles, n_turns, order; use_data_path=true, sh=nothing)
   if (use_data_path)
     path = data_path(lat)
     if path == ""
       println("Lattice file $(lat) not found!")
       return
     end
-    track_path = "$(path)/3rd_order_map"
+    if order == 1
+      track_path = "$(path)/1st_order_map"
+    elseif order == 2
+      track_path = "$(path)/2nd_order_map"
+    elseif order == 3
+      track_path = "$(path)/3rd_order_map"
+    elseif order == 0
+      track_path = "$(path)/bmad"
+    else
+      error("only order < 3 or Bmad tracking supported right now")
+    end
     if !ispath(track_path)
       mkpath(track_path)
     end
   else
     path = dirname(abspath(lat))
     track_path = path
+  end
+
+  if order == 1
+    method = "MAP"
+  elseif order == 2
+    method = "MAP"
+  elseif order == 3
+    method = "MAP"
+  elseif order == 0
+    method = "BMAD"
+    order=3
+  else
+    error("only order < 3 or Bmad tracking supported right now")
   end
   
 
@@ -921,10 +1094,10 @@ function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=tru
                             ltt%core_emit_cutoff = 1,0.95,0.9,0.85,0.80,0.78,0.76,0.74,0.72,0.70,0.68,0.66,0.64,0.62,0.60,0.58,0.56,0.54,0.52,0.50,0.48,0.46,0.42,0.40,0.35,0.3,0.25,0.2,0.15,0.1
 
                             ltt%simulation_mode = 'BEAM'
-                            ltt%tracking_method = 'MAP'   !
+                            ltt%tracking_method = '$(method)'   !
                             ltt%n_turns = 1                 ! Number of turns to track
                             ltt%rfcavity_on = T
-                            ltt%map_order = 3 ! increase see effects
+                            ltt%map_order = $(order) ! increase see effects
                             ltt%split_bends_for_stochastic_rad = T ! for map tracking = T
                             ltt%random_seed = 1                     ! Random number seed. 0 => use system clock.
                             ltt%timer_print_dtime = 300
@@ -958,10 +1131,10 @@ function run_3rd_order_map_tracking(lat, n_particles, n_turns; use_data_path=tru
                             ltt%core_emit_cutoff = 1,0.95,0.9,0.85,0.80,0.78,0.76,0.74,0.72,0.70,0.68,0.66,0.64,0.62,0.60,0.58,0.56,0.54,0.52,0.50,0.48,0.46,0.42,0.40,0.35,0.3,0.25,0.2,0.15,0.1
 
                             ltt%simulation_mode = 'BEAM'
-                            ltt%tracking_method = 'MAP'   !
+                            ltt%tracking_method = '$(method)'   !
                             ltt%n_turns = $(n_turns)                 ! Number of turns to track
                             ltt%rfcavity_on = T
-                            ltt%map_order = 3 ! increase see effects
+                            ltt%map_order = $(order) ! increase see effects
                             ltt%split_bends_for_stochastic_rad = T ! for map tracking = T
                             ltt%random_seed = 1                     ! Random number seed. 0 => use system clock.
                             ltt%timer_print_dtime = 300
@@ -1036,23 +1209,33 @@ end
 
 
 """
-    run_pol_scan_3rd_order(lat, n_particles, n_turns, agamma0)
+    run_pol_scan(lat, n_particles, n_turns, order, agamma0)
 
-IMPORTANT: Please follow the setup instructions in the `run_3rd_order_map_tracking`
+IMPORTANT: Please follow the setup instructions in the `run_map_tracking`
 documentation before running this routine.
 
 This routine sets up and submits the parallel 3rd order map tracking 
 jobs to the CLASSE cluster for the range of `agamma0` specified. 
 """
-@inline function run_pol_scan_3rd_order(lat, n_particles, n_turns, agamma0, sh)
+function run_pol_scan(lat, n_particles, n_turns, order, agamma0, sh)
   path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
     return
   end
-  
-  if !ispath("$(path)/3rd_order_map")
-    mkpath("$(path)/3rd_order_map")
+  if order == 1
+    track_path = "$(path)/1st_order_map"
+  elseif order == 2
+    track_path = "$(path)/2nd_order_map"
+  elseif order == 3
+    track_path = "$(path)/3rd_order_map"
+  elseif order == 0
+    track_path = "$(path)/bmad"
+  else
+    error("only order < 3 or Bmad tracking supported right now")
+  end
+  if !ispath(track_path)
+    mkpath(track_path)
   end
 
   # Create subdirectories with name equal to agamma0
@@ -1060,34 +1243,43 @@ jobs to the CLASSE cluster for the range of `agamma0` specified.
     subdirname = Printf.format(Printf.Format("%0$(length(string(floor(maximum(agamma0))))).2f"), agamma0[i])
     
     # ONLY CREATE NEW FILES IF IT DOESN'T EXIST YET
-    temp_lat = "$(path)/3rd_order_map/$(subdirname)/$(lat)_$(subdirname)"
+    temp_lat = "$(track_path)/$(subdirname)/$(lat)_$(subdirname)"
     if !isfile(temp_lat)
-      mkpath("$(path)/3rd_order_map/$(subdirname)")
-      cp(lat,"$(path)/3rd_order_map/$(subdirname)/$(lat)_$(subdirname)")
+      mkpath("$(track_path)/$(subdirname)")
+      cp(lat,"$(track_path)/$(subdirname)/$(lat)_$(subdirname)")
       latf = open(temp_lat, "a")
       write(latf, "\nparameter[e_tot] = $(agamma0[i])/anom_moment_electron*m_electron")
       close(latf)
     end
 
-    run_3rd_order_map_tracking(temp_lat, n_particles, n_turns; use_data_path=false,sh = sh)
+    run_map_tracking(temp_lat, n_particles, n_turns, order; use_data_path=false,sh = sh)
   end
 end
 
 
 """
-    download_pol_scan_3rd_order(lat, sh)
+    download_pol_scan(lat, order, sh)
 
-This routine reads the results of run_pol_scan_3rd_order from the CLASSE 
+This routine reads the results of run_pol_scan from the CLASSE 
 computer and creates a PolTrackData for this lattice.
 """
-function download_pol_scan_3rd_order(lat, sh)
+function download_pol_scan(lat, order, sh)
   path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
     return
-  end    
-  
-  track_path = "$(path)/3rd_order_map"
+  end
+  if order == 1
+    track_path = "$(path)/1st_order_map"
+  elseif order == 2
+    track_path = "$(path)/2nd_order_map"
+  elseif order == 3
+    track_path = "$(path)/3rd_order_map"
+  elseif order == 0
+    track_path = "$(path)/bmad"
+  else
+    error("only order < 3 or Bmad tracking supported right now")
+  end
   if !ispath(track_path)
     mkpath(track_path)
   end
@@ -1097,14 +1289,23 @@ function download_pol_scan_3rd_order(lat, sh)
   println(sh, "scp data.tar.gz \${SSH_CONNECTION%% *}:$(track_path)")
 end
 
-function read_pol_scan_3rd_order(lat, n_damp)
+function read_pol_scan(lat, order, n_damp)
   path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
     return
-  end    
-  
-  track_path = "$(path)/3rd_order_map"
+  end
+  if order == 1
+    track_path = "$(path)/1st_order_map"
+  elseif order == 2
+    track_path = "$(path)/2nd_order_map"
+  elseif order == 3
+    track_path = "$(path)/3rd_order_map"
+  elseif order == 0
+    track_path = "$(path)/bmad"
+  else
+    error("only order < 3 or Bmad tracking supported right now")
+  end
   if !ispath(track_path)
     mkpath(track_path)
   end
@@ -1185,26 +1386,183 @@ function read_pol_scan_3rd_order(lat, n_damp)
                                                                   P_t,
                                                                   T_du_t,
                                                                   T_dd_t))))
-  writedlm("$(path)/pol_track_data.dlm", pol_track_data_dlm, ';')
+  writedlm("$(track_path)/pol_track_data.dlm", pol_track_data_dlm, ';')
 
   return pol_track_data
 end
 
 """
-    get_pol_track_data(lat)
+    download_pol_tune_scan(lat, order, sh)
 
-Gets the polarization tracking data for the specified lattice.
 """
-function get_pol_track_data(lat)
+function download_pol_tune_scan(lat, order, sh)
   path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
     return
   end
-  if !isfile("$(path)/pol_track_data.dlm")
-    println("Tracking polarization data not generated for lattice $(lattice). Please use the read_pol_scan_3rd_order method to generate the data.")
+  if order == 1
+    track_path = "$(path)/pol_tune_scan/1st_order_map"
+  elseif order == 2
+    track_path = "$(path)/pol_tune_scan/2nd_order_map"
+  elseif order == 3
+    track_path = "$(path)/pol_tune_scan/3rd_order_map"
+  else
+    error("only order < 3 supported right now")
   end
-  pol_track_data_dlm = readdlm("$(path)/pol_track_data.dlm", ';')[2:end,:]
+  if !ispath(track_path)
+    mkpath(track_path)
+  end
+
+  remote_path = "~/trackings_jl" * track_path
+  println(sh, "cd $(remote_path)")
+  println(sh, "find . -name \"data.ave\" -o -name \"data.emit\" -o -name \"data.sigma\" | find  -name \"data.ave\" -o -name \"data.emit\" -o -name \"data.sigma\" | tar -czvf data.tar.gz -T -")
+  println(sh, "scp data.tar.gz \${SSH_CONNECTION%% *}:$(track_path)")
+end
+
+function read_pol_tune_scan(lat, order, n_damp)
+  path = data_path(lat)
+  if path == ""
+    println("Lattice file $(lat) not found!")
+    return
+  end
+  if order == 1
+    track_path = "$(path)/pol_tune_scan/1st_order_map"
+  elseif order == 2
+    track_path = "$(path)/pol_tune_scan/2nd_order_map"
+  elseif order == 3
+    track_path = "$(path)/pol_tune_scan/3rd_order_map"
+  else 
+    error("only order < 3 supported right now")
+  end
+  #run(`tar -xzvf $(track_path)/data.tar.gz -C $(track_path)`)
+
+  # Empty DepolTuneData struct which we will fill:
+  Qx_data = Float64[]
+  Qy_data = Float64[]
+  Qz_data = Float64[]
+  tau_dep_data = Float64[]
+  emit_a_data = Float64[]
+  emit_b_data = Float64[]
+  emit_c_data = Float64[]
+  depol_tune_data = DepolTuneData(Qx_data, Qy_data, Qz_data, tau_dep_data, emit_a_data, emit_b_data, emit_c_data)
+
+  # Get the tracking subdirs
+  Qx_subdirs = filter(isdir, readdir(track_path, join=true))
+  for Qx_subdir in Qx_subdirs
+    Qx = parse(Float64, basename(Qx_subdir))
+    Qy_subdirs = filter(isdir, readdir(Qx_subdir, join=true))
+    for Qy_subdir in Qy_subdirs
+      Qy = parse(Float64, basename(Qy_subdir))
+      Qz_subdirs = filter(isdir, readdir(Qy_subdir, join=true))
+      for Qz_subdir in Qz_subdirs
+        # Calculate tau_depol
+        Qz = parse(Float64, basename(Qz_subdir))
+        if isfile(Qz_subdir * "/data.ave")
+          data_ave = readdlm(Qz_subdir * "/data.ave")
+          row_start = findlast(x->occursin("#",string(x)), data_ave[:,1])[1] + 1
+          t = Float64.(data_ave[row_start+n_damp:end,3])
+          P = Float64.(data_ave[row_start+n_damp:end,4])
+          # Linear regression to get depol time
+          data = DataFrame(X=t, Y=P)
+          tau_dep_track = -coef(lm(@formula(Y ~ X), data))[2]^-1/60
+          push!(depol_tune_data.Qx, Qx)
+          push!(depol_tune_data.Qy, Qy)
+          push!(depol_tune_data.Qz, Qz)
+          push!(depol_tune_data.tau_dep, tau_dep_track)
+          data_emit = readdlm(Qz_subdir * "/data.emit")
+          row_start = findlast(x->occursin("#",string(x)), data_emit[:,1])[1] + 1
+          emit_a = Float64.(data_emit[row_start+n_damp:end,4])
+          emit_b = Float64.(data_emit[row_start+n_damp:end,5])
+          emit_c = Float64.(data_emit[row_start+n_damp:end,6])
+          push!(depol_tune_data.emit_a, mean(emit_a))
+          push!(depol_tune_data.emit_b, mean(emit_b))
+          push!(depol_tune_data.emit_c, mean(emit_c))
+        end
+      end
+    end
+  end
+
+  names =["Qx",
+          "Qy",
+          "Qz",
+          "tau_dep",
+          "emit_a",
+          "emit_b",
+          "emit_c"]
+  depol_tune_data_dlm = permutedims(hcat(names, permutedims(hcat(depol_tune_data.Qx,
+                                                                  depol_tune_data.Qy,
+                                                                  depol_tune_data.Qz,
+                                                                  depol_tune_data.tau_dep,
+                                                                  depol_tune_data.emit_a,
+                                                                  depol_tune_data.emit_b,
+                                                                  depol_tune_data.emit_c))))
+  writedlm("$(track_path)/depol_tune_data.dlm", depol_tune_data_dlm, ';')
+
+  return depol_tune_data
+end
+
+function get_pol_tune_data(lat, order)
+  path = data_path(lat)
+  if path == ""
+    println("Lattice file $(lat) not found!")
+    return
+  end
+  if order == 1
+    track_path = "$(path)/pol_tune_scan/1st_order_map"
+  elseif order == 2
+    track_path = "$(path)/pol_tune_scan/2nd_order_map"
+  elseif order == 3
+    track_path = "$(path)/pol_tune_scan/3rd_order_map"
+  else
+    error("only order < 3 supported right now")
+  end
+  if !isfile("$(track_path)/depol_tune_data.dlm")
+    println("Tracking polarization tune scan not generated for lattice $(lattice).")
+  end
+  depol_tune_data_dlm = readdlm("$(track_path)/depol_tune_data.dlm", ';')[2:end,:]
+  
+
+  return DepolTuneData( depol_tune_data_dlm[:,1],
+                  depol_tune_data_dlm[:,2],
+                  depol_tune_data_dlm[:,3],
+                  depol_tune_data_dlm[:,4],
+                  depol_tune_data_dlm[:,5],
+                  depol_tune_data_dlm[:,6],
+                  depol_tune_data_dlm[:,7])
+end
+
+
+"""
+    get_pol_track_data(lat, order)
+
+Gets the polarization tracking data for the specified lattice.
+"""
+function get_pol_track_data(lat, order)
+  path = data_path(lat)
+  if path == ""
+    println("Lattice file $(lat) not found!")
+    return
+  end
+  if order == 1
+    track_path = "$(path)/1st_order_map"
+  elseif order == 2
+    track_path = "$(path)/2nd_order_map"
+  elseif order == 3
+    track_path = "$(path)/3rd_order_map"
+    # for backwards compatibility
+  elseif order == 0
+    track_path = "$(path)/bmad"
+  else
+    error("only order < 3 or Bmad tracking supported right now")
+  end
+  if !ispath(track_path)
+    mkpath(track_path)
+  end
+  if !isfile("$(track_path)/pol_track_data.dlm")
+    println("Tracking polarization data not generated for lattice $(lattice). Please use the read_pol_scan method to generate the data.")
+  end
+  pol_track_data_dlm = readdlm("$(track_path)/pol_track_data.dlm", ';')[2:end,:]
   
 
   return PolTrackData( pol_track_data_dlm[:,1],
