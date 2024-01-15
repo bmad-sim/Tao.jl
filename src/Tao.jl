@@ -284,7 +284,7 @@ struct DepolTuneData
   Qx
   Qy
   Qz
-  tau_dep
+  tau_dep # In Minutes  
   emit_a
   emit_b
   emit_c
@@ -945,13 +945,13 @@ function run_pol_tune_scan(lat,  n_particles, n_turns, order, Qx_range, Qy_range
     return
   end
   if order == 1
-    track_path = "$(path)/1st_order_map"
+    track_path = "$(path)/pol_tune_scan/1st_order_map"
   elseif order == 2
-    track_path = "$(path)/2nd_order_map"
+    track_path = "$(path)/pol_tune_scan/2nd_order_map"
   elseif order == 3
-    track_path = "$(path)/3rd_order_map"
+    track_path = "$(path)/pol_tune_scan/3rd_order_map"
   elseif order == 0
-    track_path = "$(path)/bmad"
+    track_path = "$(path)/pol_tune_scan/bmad"
   else
     error("only order < 3 or Bmad tracking supported right now")
   end
@@ -967,7 +967,7 @@ function run_pol_tune_scan(lat,  n_particles, n_turns, order, Qx_range, Qy_range
       for Qz in Qz_range
         subdirname3 = Printf.format(Printf.Format("%02.4f"), Qz)
         # ONLY CREATE NEW LAT FILES IF THEY DON'T EXIST YET
-        temp_lat = "$(track_path)/$(subdirname1)/$(subdirname2)/$(subdirname3)/$(lat)_$(subdirname1)_$(subdirname2)_$(subdirname3)"
+        temp_lat = "$(track_path)/$(subdirname1)/$(subdirname2)/$(subdirname3)/$(lat)"
         tao_cmd = open("$(path)/spin_tune_scan.tao", "w")
         println(tao_cmd, "set tune $Qx $Qy -mask *,~hq%_*_*; set z_tune $Qz")
         println(tao_cmd, "write bmad -form one_file $(temp_lat)")
@@ -1407,8 +1407,10 @@ function download_pol_tune_scan(lat, order, sh)
     track_path = "$(path)/pol_tune_scan/2nd_order_map"
   elseif order == 3
     track_path = "$(path)/pol_tune_scan/3rd_order_map"
+  elseif order == 0
+    track_path = "$(path)/pol_tune_scan/bmad"
   else
-    error("only order < 3 supported right now")
+    error("only order < 3 or bmad tracking (0) supported right now")
   end
   if !ispath(track_path)
     mkpath(track_path)
@@ -1432,10 +1434,12 @@ function read_pol_tune_scan(lat, order, n_damp)
     track_path = "$(path)/pol_tune_scan/2nd_order_map"
   elseif order == 3
     track_path = "$(path)/pol_tune_scan/3rd_order_map"
+  elseif order == 0
+    track_path = "$(path)/pol_tune_scan/bmad"
   else 
-    error("only order < 3 supported right now")
+    error("only order < 3 or bmad tracking (0) supported right now")
   end
-  #run(`tar -xzvf $(track_path)/data.tar.gz -C $(track_path)`)
+  run(`tar -xzvf $(track_path)/data.tar.gz -C $(track_path)`)
 
   # Empty DepolTuneData struct which we will fill:
   Qx_data = Float64[]
