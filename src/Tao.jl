@@ -26,9 +26,12 @@ export  data_path,
         run_pol_tune_scan,
         download_pol_tune_scan,
         read_pol_tune_scan,
-        get_pol_tune_data
+        get_pol_tune_data,
+        a_e,
+        m_e
 
-
+const a_e = 0.00115965218128
+const m_e = 0.51099895e6
 
 # Returns empty string if lattice not found
 function data_path(lat)
@@ -125,7 +128,7 @@ end
 This method is NOT generalized yet:
 Generates misalignments Bmad files for each element for the ESR of the EIC
 """
-function misalign(lat, seed, outf = "misalign-seed-$(seed).bmad")
+function misalign(lat, seed, outf = "misalign-seed-$(seed).bmad"; x_offsets=true,y_offsets=true,tilts=true,rolls=true,fields=true,sextupoles=true)
   path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
@@ -153,71 +156,74 @@ function misalign(lat, seed, outf = "misalign-seed-$(seed).bmad")
       y_offset = rand(Normal(0,0.0002)) # 0.2mm
       roll = rand(Normal(0,0.5e-3))     # 0.5 mrad
       dBpB = rand(Normal(0,0.0005))     # 0.05% field error 
-      println(out, "$(ele_names[i])[x_offset] = $(x_offset)")
-      println(out, "$(ele_names[i])[y_offset] = $(y_offset)")
-      println(out, "$(ele_names[i])[roll] = $(roll)")
-      println(out, "$(ele_names[i])[dg] = $(ele_names[i])[g]*$(dBpB)")
+      x_offsets && println(out, "$(ele_names[i])[x_offset] = $(x_offset)")
+      y_offsets && println(out, "$(ele_names[i])[y_offset] = $(y_offset)")
+      rolls && println(out, "$(ele_names[i])[roll] = $(roll)")
+      fields && rintln(out, "$(ele_names[i])[dg] = $(ele_names[i])[g]*$(dBpB)")
       i = i+1
     elseif ele_types[i] in FF_quads
       x_offset = rand(Normal(0,0.0001)) # 0.1mm
       y_offset = rand(Normal(0,0.0001)) # 0.1mm
       roll = rand(Normal(0,0.5e-3))     # 0.5 mrad
       dBpB = rand(Normal(0,0.0005))     # 0.05% field error 
-      println(out, "$(ele_names[i])[x_offset] = $(x_offset)")
-      println(out, "$(ele_names[i])[y_offset] = $(y_offset)")
-      println(out, "$(ele_names[i])[tilt] = $(roll)")
-      println(out, "$(ele_names[i])[k1] = $(ele_names[i])[k1]*$(dBpB+1)")
+      x_offsets && println(out, "$(ele_names[i])[x_offset] = $(x_offset)")
+      y_offsets && println(out, "$(ele_names[i])[y_offset] = $(y_offset)")
+      tilts && println(out, "$(ele_names[i])[tilt] = $(roll)")
+      fields && println(out, "$(ele_names[i])[k1] = $(ele_names[i])[k1]*$(dBpB+1)")
       i = i+1
     elseif ele_types[i] == "Multipole"      # All multipoles in the lattice are edges of bends
       x_offset = rand(Normal(0,0.0002)) # 0.2mm
       y_offset = rand(Normal(0,0.0002)) # 0.2mm
       roll = rand(Normal(0,0.5e-3))     # 0.5 mrad
       dBpB = rand(Normal(0,0.001))      # 0.1% field error 
-      println(out, "$(ele_names[i])[x_offset] = $(x_offset)")
-      println(out, "$(ele_names[i])[y_offset] = $(y_offset)")
-      println(out, "$(ele_names[i])[tilt] = $(roll)")
-      println(out, "$(ele_names[i])[k1l] = $(ele_names[i])[k1l]*$(dBpB+1)")
+      x_offsets && println(out, "$(ele_names[i])[x_offset] = $(x_offset)")
+      y_offsets && println(out, "$(ele_names[i])[y_offset] = $(y_offset)")
+      rolls && println(out, "$(ele_names[i])[tilt] = $(roll)")
+      fields && println(out, "$(ele_names[i])[k1l] = $(ele_names[i])[k1l]*$(dBpB+1)")
       
-      println(out, "$(ele_names[i+1])[x_offset] = $(x_offset)")
-      println(out, "$(ele_names[i+1])[y_offset] = $(y_offset)")
-      println(out, "$(ele_names[i+1])[roll] = $(roll)")
-      println(out, "$(ele_names[i+1])[dg] = $(ele_names[i+1])[g]*$(dBpB)")
+      x_offsets && println(out, "$(ele_names[i+1])[x_offset] = $(x_offset)")
+      y_offsets && println(out, "$(ele_names[i+1])[y_offset] = $(y_offset)")
+      rolls && println(out, "$(ele_names[i+1])[roll] = $(roll)")
+      fields && println(out, "$(ele_names[i+1])[dg] = $(ele_names[i+1])[g]*$(dBpB)")
 
-      println(out, "$(ele_names[i+2])[x_offset] = $(x_offset)")
-      println(out, "$(ele_names[i+2])[y_offset] = $(y_offset)")
-      println(out, "$(ele_names[i+2])[tilt] = $(roll)")
-      println(out, "$(ele_names[i+2])[k1l] = $(ele_names[i+2])[k1l]*$(dBpB+1)")
+      x_offsets && println(out, "$(ele_names[i+2])[x_offset] = $(x_offset)")
+      y_offsets && println(out, "$(ele_names[i+2])[y_offset] = $(y_offset)")
+      rolls && println(out, "$(ele_names[i+2])[tilt] = $(roll)")
+      fields && println(out, "$(ele_names[i+2])[k1l] = $(ele_names[i+2])[k1l]*$(dBpB+1)")
       i = i+3
     elseif ele_types[i] == "Sbend"
       x_offset = rand(Normal(0,0.0002)) # 0.2mm
       y_offset = rand(Normal(0,0.0002)) # 0.2mm
       roll = rand(Normal(0,0.5e-3))     # 0.5 mrad
       dBpB = rand(Normal(0,0.001))      # 0.1% field error 
-      println(out, "$(ele_names[i])[x_offset] = $(x_offset)")
-      println(out, "$(ele_names[i])[y_offset] = $(y_offset)")
-      println(out, "$(ele_names[i])[roll] = $(roll)")
-      println(out, "$(ele_names[i])[dg] = $(ele_names[i])[g]*$(dBpB)")
+      x_offsets && println(out, "$(ele_names[i])[x_offset] = $(x_offset)")
+      y_offsets && println(out, "$(ele_names[i])[y_offset] = $(y_offset)")
+      rolls && println(out, "$(ele_names[i])[roll] = $(roll)")
+      fields && rintln(out, "$(ele_names[i])[dg] = $(ele_names[i])[g]*$(dBpB)")
       i = i+1
     elseif ele_types[i] == "Quadrupole"
       x_offset = rand(Normal(0,0.0002)) # 0.2mm
       y_offset = rand(Normal(0,0.0002)) # 0.2mm
       roll = rand(Normal(0,0.5e-3))     # 0.5 mrad
       dBpB = rand(Normal(0,0.001))      # 0.1% field error 
-      println(out, "$(ele_names[i])[x_offset] = $(x_offset)")
-      println(out, "$(ele_names[i])[y_offset] = $(y_offset)")
-      println(out, "$(ele_names[i])[tilt] = $(roll)")
-      println(out, "$(ele_names[i])[k1] = $(ele_names[i])[k1]*$(dBpB+1)")
-    elseif ele_types[i] == "Sextupole"
+      x_offsets && println(out, "$(ele_names[i])[x_offset] = $(x_offset)")
+      y_offsets && println(out, "$(ele_names[i])[y_offset] = $(y_offset)")
+      tilts && println(out, "$(ele_names[i])[tilt] = $(roll)")
+      fields && println(out, "$(ele_names[i])[k1] = $(ele_names[i])[k1]*$(dBpB+1)")
+      i = i+1
+    elseif sextupoles && ele_types[i] == "Sextupole"
       x_offset = rand(Normal(0,0.0002)) # 0.2mm
       y_offset = rand(Normal(0,0.0002)) # 0.2mm
       roll = rand(Normal(0,0.5e-3))     # 0.5 mrad
       dBpB = rand(Normal(0,0.002))      # 0.2% field error 
-      println(out, "$(ele_names[i])[x_offset] = $(x_offset)")
-      println(out, "$(ele_names[i])[y_offset] = $(y_offset)")
-      println(out, "$(ele_names[i])[tilt] = $(roll)")
-      println(out, "$(ele_names[i])[k2] = $(ele_names[i])[k2]*$(dBpB+1)")
+      x_offsets && println(out, "$(ele_names[i])[x_offset] = $(x_offset)")
+      y_offsets && println(out, "$(ele_names[i])[y_offset] = $(y_offset)")
+      tilts && println(out, "$(ele_names[i])[tilt] = $(roll)")
+      fields && println(out, "$(ele_names[i])[k2] = $(ele_names[i])[k2]*$(dBpB+1)")
+      i = i+1
+    else
+      i=i+1
     end
-    i = i+1
   end
   close(out)
 end
@@ -445,10 +451,10 @@ function BAGELS_1(lat, unit_bump, kick=1e-5, tol=1e-8)
       end
       n_per_group = 2
     elseif unit_bump == 5 # pi_cancel_eta bump
-      for i=1:length(coil_names)-3
-        for j=i+1:length(coil_names)-2
-          for k=j+1:length(coil_names)-1
-            for l=k+1:length(coil_names)
+      for i=1:length(coil_names)
+        for j=i:length(coil_names)
+          for k=j:length(coil_names)
+            for l=k:length(coil_names)
               # First set and second set must be separate pi bump:
               if abs(coil_phis[j] - coil_phis[i]- pi) < tol && abs(coil_phis[l] - coil_phis[k] - pi) < tol
                 # Now check if either 2*pi apart
@@ -525,7 +531,7 @@ function BAGELS_1(lat, unit_bump, kick=1e-5, tol=1e-8)
 end
 
 """
-    BAGELS_2(lat, unit_bump; suffix="", outf="\$(lat)_BAGELS.bmad", kick=1e-5))
+    BAGELS_2(lat, unit_bump; prefix="BAGELS", suffix="", outf="\$(lat)_BAGELS.bmad", kick=1e-5))
 
 Best Adjustment Groups for ELectron Spin (BAGELS) method step 2: peform an SVD of the 
 response matrix to obtain the best adjustment groups, based on the settings of step 1. 
@@ -540,11 +546,12 @@ The vertical closed orbit unit bump types are:
 - `lat`       -- lat file name
 - `unit_bump` -- Type of unit closed orbit bump. Options are: (1) `pi`, (2) `n2pi`, (3) `n2pi_cancel_eta`, (4) `2pi`, (5) `pi_cancel_eta`
 - `coil_regex` -- (Optional) Regex of coils to match to (e.g. for all coils ending in `_7` or `_11`, use `r".*_(?:7|11)\\b"`)
+- `suffix`     -- (Optional) Prefix to append to group elements generated for knobs in Bmad format
 - `suffix`     -- (Optional) Suffix to append to group elements generated for knobs in Bmad format
 - `outf`       -- (Optional) Output file name with group elements constructed from BAGELS, default is `\$(lat)_BAGELS.bmad`
 - `kick`       -- (Optional) Coil kick, default is 1e-5
 """
-function BAGELS_2(lat, unit_bump; coil_regex=r".*", suffix="", outf="$(lat)_BAGELS.bmad", kick=1e-5)
+function BAGELS_2(lat, unit_bump; prefix="BAGELS", coil_regex=r".*", suffix="", outf="$(lat)_BAGELS.bmad", kick=1e-5)
   path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
@@ -654,7 +661,7 @@ function BAGELS_2(lat, unit_bump; coil_regex=r".*", suffix="", outf="$(lat)_BAGE
       knob_out = open(outf, "a")
     end
     
-    println(knob_out, "BAGELS$(suffix)$(Printf.format(Printf.Format("%0$(length(string(length(F.S))))i"), i)): group = {\t\t\t ! Singular value = $(F.S[i])")
+    println(knob_out, "$(prefix)$(Printf.format(Printf.Format("%0$(length(string(length(F.S))))i"), i))$(suffix): group = {\t\t\t ! Singular value = $(F.S[i])")
     
     coil = unique_coils[1]
     strength = 0.
@@ -1524,7 +1531,7 @@ function get_pol_tune_data(lat, order)
   if !isfile("$(track_path)/depol_tune_data.dlm")
     println("Tracking polarization tune scan not generated for lattice $(lattice).")
   end
-  depol_tune_data_dlm = readdlm("$(track_path)/depol_tune_data.dlm", ';')[2:end,:]
+  depol_tune_data_dlm = Float64.(readdlm("$(track_path)/depol_tune_data.dlm", ';')[2:end,:])
   
 
   return DepolTuneData( depol_tune_data_dlm[:,1],
@@ -1564,9 +1571,9 @@ function get_pol_track_data(lat, order)
     mkpath(track_path)
   end
   if !isfile("$(track_path)/pol_track_data.dlm")
-    println("Tracking polarization data not generated for lattice $(lattice). Please use the read_pol_scan method to generate the data.")
+    println("Tracking polarization data not generated for lattice $(lat). Please use the read_pol_scan method to generate the data.")
   end
-  pol_track_data_dlm = readdlm("$(track_path)/pol_track_data.dlm", ';')[2:end,:]
+  pol_track_data_dlm = Float64.(readdlm("$(track_path)/pol_track_data.dlm", ';')[2:end,:])
   
 
   return PolTrackData( pol_track_data_dlm[:,1],
