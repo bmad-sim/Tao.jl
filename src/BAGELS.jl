@@ -286,6 +286,11 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
     end
   end
 
+  fA0 = mapreduce(a->readdlm("$path/$a/baseline.dlm", ';', skipstart=2)[:,end], hcat,A)
+  idx_A = findall(t->occursin(A_regex, t), A_elenames)
+  fA0 = fA0[idx_A,:]
+  fA0 = reshape(transpose(fA0), (length(A)*length(fA0[:,1]),1)) # Flatten
+
   if !isnothing(B)
     B_elenames = readdlm("$(path)/$(first(B))/baseline.dlm", ';', skipstart=2)[:,2]
     for b in B
@@ -293,18 +298,11 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
         error("Cannot combine responses in B! Different element names per calculated response. Please use BAGELS_1 with same specified `at`.")
       end
     end
-  end
 
-  fA0 = mapreduce(a->readdlm("$path/$a/baseline.dlm", ';', skipstart=2)[:,end], hcat,A)
-  idx_A = findall(t->occursin(A_regex, t), A_elenames)
-  fA0 = fA0[idx_A,:]
-  fA0 = reshape(transpose(fA0), (3*length(fA0[:,1]),1)) # Flatten
-
-  if !isnothing(B)
-    fB0 = mapreduce(b->readdlm("$path/$b/baseline.dlm", ';', skipstart=2)[:,end], hcat,B)
+    fB0 = mapreduce(b->readdlm("$path/$b/baseline.dlm", ';', skipstart=2)[:,end], hcat, B)
     idx_B = findall(t->occursin(B_regex, t), B_elenames)
     fB0 = fB0[idx_B,:]
-    fB0 = reshape(transpose(fB0), (3*length(fB0[:,1]),1)) # Flatten
+    fB0 = reshape(transpose(fB0), (length(B)*length(fB0[:,1]),1)) # Flatten
   end
 
 
@@ -331,7 +329,8 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
   unit_sgns = permutedims(reshape(unit_sgns_list, (n_per_group,floor(Int, length(unit_sgns_list)/n_per_group))))
 
   # We now will have a response matrix that is N_A x N_groups to multiply with vector N_groups x 1
-  delta_fA = zeros(3*length(idx_A), length(unit_groups[:,1]))
+  delta_fA = zeros(length(A)*length(idx_A), length(unit_groups[:,1]))
+  if !isnothing(B) delta_fB = zeros(length(B)*length(idx_B), length(unit_groups[:,1])) end
 
   for i=1:length(unit_groups[:,1])
     str_coils = ""
@@ -342,11 +341,15 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
     str_coils = str_coils[1:end-1] * ".dlm"
 
     # for each response to A, we get the response:
-
     fA = mapreduce(a->readdlm("$path/$a/$str_coils", ';', skipstart=2)[:,end], hcat,A)[idx_A,:]
-    fA = reshape(transpose(fA), (3*length(fA[:,1]),1)) # Flatten
-  
+    fA = reshape(transpose(fA), (length(A)*length(fA[:,1]),1)) # Flatten
     delta_fA[:,i] = (fA .- fA0)./kick
+
+    if !isnothing(B)
+      fB = mapreduce(b->readdlm("$path/$b/$str_coils", ';', skipstart=2)[:,end], hcat,B)[idx_B,:]
+      fB = reshape(transpose(fB), (length(B)*length(fB[:,1]),1)) # Flatten
+      delta_fB[:,i] = (fB .- fB0)./kick
+    end
     #dn_dpz_bends = readdlm("$(path)/responses_$(str_kick)/$(str_coils)", skipstart=2)[1:end-2,6:8][idx_bends,:]
     
     #return dn_dpz_bends
@@ -378,16 +381,25 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
   end
   =#
   
-
+  #return delta_fB
   # Now do SVD to get the principal components
-  F = svd(delta_fA)
+  ATA = transpose(delta_fA)*delta_fA
+  if isnothing(B)
+    BTB = I(length(unit_groups[:,1]))
+  else
+    BTB = transpose(delta_fB)*delta_fB
+  end
+  F = eigen(ATA, BTB, sortby=t->-abs(t))
+  #F = svd(delta_fA)
 
   # Get first N_knobs principal directions
-  V = F.V
+  #V = F.V
+  V = F.vectors
+  vals = F.values
 
   if solve_knobs > 0 # calculate least squares solution using BAGELS knobs
     # construct new response matrix
-    SVD_delta_fA = zeros( 3*length(idx_A), solve_knobs)
+    SVD_delta_fA = zeros( length(A)*length(idx_A), solve_knobs)
     for i=1:solve_knobs
       SVD_delta_fA[:,i] = delta_fA*V[:,i]
     end
@@ -395,7 +407,7 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
   end
 
   # Create a group element with these as knobs  
-  for i=1:length(F.S)
+  for i=1:length(vals)
     knob = V[:,i]
     # Create matrix containing the strength of individual coils based on the 
     # the strength of that coil in each unit group
@@ -420,7 +432,7 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
       knob_out = open(outf, "a")
     end
     
-    println(knob_out, "$(prefix)$(Printf.format(Printf.Format("%0$(length(string(length(F.S))))i"), i))$(suffix): group = {\t\t\t ! Singular value = $(F.S[i])")
+    println(knob_out, "$(prefix)$(Printf.format(Printf.Format("%0$(length(string(length(vals))))i"), i))$(suffix): group = {\t\t\t ! Eigenvalue = $(vals[i])")
     
     coil = unique_coils[1]
     strength = 0.
@@ -443,8 +455,8 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
     close(knob_out)
   end
 
-  print("\nSingular values are: ")
-  print(F.S)
+  print("\nEigenvalues are: ")
+  print(vals)
 
   return F
 end
