@@ -27,6 +27,7 @@ export  data_path,
         download_pol_tune_scan,
         read_pol_tune_scan,
         get_pol_tune_data,
+        vkickers_to_quats,
         a_e,
         m_e
 
@@ -45,6 +46,76 @@ function data_path(lat)
     return ""
   end
 end
+
+
+"""
+
+    vkickers_to_quats(lat, agamma_0=40.5)
+
+This function converts all vkickers with nonzero kick in the lattice to 
+drifts and a zeroth order spin rotation quaternion giving the same spin 
+rotation as the original kick.
+
+"""
+function vkickers_to_quats(lat, outname, agamma_0=40.5, orbit_tol=1e-9)
+  # first we need to get the quadrupole data
+  path = data_path(lat)
+  if path == ""
+    println("Lattice file $(lat) not found!")
+    return
+  end
+
+  run(`tao -lat $lat -command "pipe -write $(path * "/quad_y_orbs.txt") lat_list quadrupole::* ele.name,ele.k1,ele.l,orbit.vec.3;" exit`)
+  # Now read in the stuff
+  data = readdlm(path * "/quad_y_orbs.txt", ';')
+  # get everything where orbit is > orbit_tol
+  idxs = findall(t->abs(t)>orbit_tol, data[:,end])
+  orbit_y = data[idxs,end]
+  quad_name = data[idxs,1]
+  k1 = data[idxs,2]
+  l = data[idxs,3]
+
+  
+  (tmppath, tmpio) = mktemp()
+  latf = open(lat)
+  for line in eachline(latf, keep=true)
+    str = uppercase(replace(line, " " => ""))
+    if occursin("VKICKER", str) && occursin("KICK=", str)
+      name = str[1:findfirst(":", str)[1]-1]
+      if !isnothing(findfirst("L=", str))
+        L = parse(Float64, str[(findfirst("L=", str)[end]+1):(findnext(t->(t==',' || t=='\n'), str, findfirst("L=", str)[end])[1]-1)])
+      else
+        L = 0.
+      end
+      #return(str)
+      #println(findnext(t->(t==',' || t=='\n'), str, findfirst("KICK=", str)[end]))
+      kick = parse(Float64, str[(findfirst("KICK=", str)[end]+1):(findnext(t->(t==',' || t=='\n'), str, findfirst("KICK=", str)[end])[1]-1)])
+      # to keep it simple we'll make this a line consisting of a drift and zero-th order spin rotation
+      write(tmpio, "$(name * "_drift"): Drift, L = $L\n")
+      phi_y = -(1+agamma_0)*kick
+      write(tmpio, "$(name * "_quat"): Taylor, {S1: $(cos(phi_y/2)), 0 0 0 0 0 0}, {Sx: $(sin(phi_y/2)), 0 0 0 0 0 0}\n")
+      write(tmpio, "$(name): line = ($(name * "_drift"), $(name * "_quat"))\n")
+    elseif occursin("QUADRUPOLE", str)  # if a quadrupole
+      name = str[1:findfirst(":", str)[1]-1]
+      idx = findfirst(t->t==name, quad_name)
+      if !isnothing(idx)  # if the name is a quad with orbit x_offset
+        phi_y = -(1+agamma_0)*k1[idx]*l[idx]*orbit_y[idx]
+        write(tmpio, "$(name * "_quad"): Quadrupole, K1 = $(k1[idx]), L=$(l[idx])\n")
+        write(tmpio, "$(name * "_quat"): Taylor, {S1: $(cos(phi_y/2)), 0 0 0 0 0 0}, {Sx: $(sin(phi_y/2)), 0 0 0 0 0 0}\n")
+        write(tmpio, "$(name): line = ($(name * "_quad"), $(name * "_quat"))\n")
+      else
+        write(tmpio, line) # just keep what's there already
+      end
+    else
+      write(tmpio, line)
+    end
+  end
+  close(latf)
+  close(tmpio)
+  mv(tmppath, outname, force=true)
+  return
+end
+
 
 
 """
@@ -531,7 +602,7 @@ function BAGELS_1(lat, unit_bump, kick=1e-5, tol=1e-8)
 end
 
 """
-    BAGELS_2(lat, unit_bump; prefix="BAGELS", suffix="", outf="\$(lat)_BAGELS.bmad", kick=1e-5))
+    BAGELS_2(lat, unit_bump; prefix="BAGELS", coil_regex=r".*", bend_regex=r".*", suffix="", outf="\$(lat)_BAGELS.bmad", kick=1e-5, print_sol=false, do_amp=false)
 
 Best Adjustment Groups for ELectron Spin (BAGELS) method step 2: peform an SVD of the 
 response matrix to obtain the best adjustment groups, based on the settings of step 1. 
@@ -546,12 +617,16 @@ The vertical closed orbit unit bump types are:
 - `lat`       -- lat file name
 - `unit_bump` -- Type of unit closed orbit bump. Options are: (1) `pi`, (2) `n2pi`, (3) `n2pi_cancel_eta`, (4) `2pi`, (5) `pi_cancel_eta`
 - `coil_regex` -- (Optional) Regex of coils to match to (e.g. for all coils ending in `_7` or `_11`, use `r".*_(?:7|11)\\b"`)
+- `bend_regex` -- (Optional) Regex of bends to match to and include in SVD 
 - `suffix`     -- (Optional) Prefix to append to group elements generated for knobs in Bmad format
 - `suffix`     -- (Optional) Suffix to append to group elements generated for knobs in Bmad format
 - `outf`       -- (Optional) Output file name with group elements constructed from BAGELS, default is `\$(lat)_BAGELS.bmad`
 - `kick`       -- (Optional) Coil kick, default is 1e-5
+- `print_sol`  -- (Optional) Prints group elements which solves (in a least squares sense) the matrix equation for dn/ddelta=0
+- `do_amp`     -- (Optional) If true, calculates response matrix of |dn/ddelta| instead of dn/ddelta.x, which is the default 
+- `solve_knobs` -- (Optional) If set > 0, will print the knob settings for the first `solve_knobs` BAGELS knobs to minimize in a least squares sense dn/ddelta
 """
-function BAGELS_2(lat, unit_bump; prefix="BAGELS", coil_regex=r".*", suffix="", outf="$(lat)_BAGELS.bmad", kick=1e-5)
+function BAGELS_2(lat, unit_bump; prefix="BAGELS", coil_regex=r".*", bend_regex=r".*", suffix="", outf="$(lat)_BAGELS.bmad", kick=1e-5, print_sol=false, do_amp=false, solve_knobs=0)
   path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
@@ -584,11 +659,15 @@ function BAGELS_2(lat, unit_bump; prefix="BAGELS", coil_regex=r".*", suffix="", 
   unit_sgns_raw =  readdlm("$(path)/sgns.txt", ',')
 
   eletypes = readdlm("$(path)/responses_$(str_kick)/baseline.txt", skipstart=2)[1:end-2,3]
+  elenames = readdlm("$(path)/responses_$(str_kick)/baseline.txt", skipstart=2)[1:end-2,2]
   dn_dpz0 = readdlm("$(path)/responses_$(str_kick)/baseline.txt", skipstart=2)[1:end-2,6:8]
-
+#return elenames
   # Get number of Sbends to only sample at Sbends
-  idx_bends = findall(i-> i=="Sbend", eletypes)
+  idx_bends = intersect(findall(t->t=="SBend", eletypes), findall(t->occursin(bend_regex, t), elenames))
   dn_dpz0_bends = dn_dpz0[idx_bends,:]
+  dn_dpz0_bends_amp = [norm(dn_dpz0_bends[j,:]).^2 for j=1:length(dn_dpz0_bends[:,1])]
+  dn_dpz0_bends = reshape(transpose(dn_dpz0_bends), (3*length(dn_dpz0_bends[:,1]),1))
+
 
   # Only use unit groups where all coils in the group match the regex
   unit_groups_list = []
@@ -613,7 +692,7 @@ function BAGELS_2(lat, unit_bump; prefix="BAGELS", coil_regex=r".*", suffix="", 
   unit_sgns = permutedims(reshape(unit_sgns_list, (n_per_group,floor(Int, length(unit_sgns_list)/n_per_group))))
 
   # We now will have a response matrix that is N_bends x N_groups to multiply with vector N_groups x 1
-  delta_dn_dpz = zeros(length(idx_bends), length(unit_groups[:,1]))
+  delta_dn_dpz = zeros( do_amp ? length(idx_bends) : 3*length(idx_bends), length(unit_groups[:,1]))
   for i=1:length(unit_groups[:,1])
     str_coils = ""
     for j=1:length(unit_groups[i,:])
@@ -622,18 +701,49 @@ function BAGELS_2(lat, unit_bump; prefix="BAGELS", coil_regex=r".*", suffix="", 
     end
     str_coils = str_coils[1:end-1] * ".txt"
     dn_dpz_bends = readdlm("$(path)/responses_$(str_kick)/$(str_coils)", skipstart=2)[1:end-2,6:8][idx_bends,:]
-    #dn_dpz_bends_amp = [norm(dn_dpz_bends[j,:]) for j=1:length(dn_dpz_bends[:,1])]
-    #delta_dn_dpz_amp = dn_dpz_bends_amp .- dn_dpz0_bends_amp
-    #delta_dn_dpz_amp = [norm(delta_dn_dpz[j,:]) for j=1:length(delta_dn_dpz[:,1])]
-    # For now, BAGELS only uses x component of dn/ddelta
-    delta_dn_dpz[:,i] = (dn_dpz_bends[:,1] .- dn_dpz0_bends[:,1])./kick
+    
+    #return dn_dpz_bends
+    if do_amp
+      dn_dpz_bends_amp = [norm(dn_dpz_bends[j,:]).^2 for j=1:length(dn_dpz_bends[:,1])]
+      #delta_dn_dpz_amp = dn_dpz_bends_amp .- dn_dpz0_bends_amp
+      #delta_dn_dpz_amp = [norm(delta_dn_dpz[j,:]) for j=1:length(delta_dn_dpz[:,1])]
+      delta_dn_dpz[:,i] = (dn_dpz_bends_amp .- dn_dpz0_bends_amp)./kick #(dn_dpz_bends[:,1] .- dn_dpz0_bends[:,1])./kick
+    else
+      dn_dpz_bends = reshape(transpose(dn_dpz_bends), (3*length(dn_dpz_bends[:,1]),1))
+      delta_dn_dpz[:,i] = (dn_dpz_bends .- dn_dpz0_bends)./kick
+    end 
+  end
+
+  if print_sol
+    strengths =  do_amp ? delta_dn_dpz\-dn_dpz0_bends_amp : delta_dn_dpz\float.(-dn_dpz0_bends)
+    #return delta_dn_dpz, -dn_dpz0_bends_amp, strengths
+    for i=1:size(unit_groups, 1)
+      print("BAGELS_SOLVE$i: group = {")
+      for j=1:size(unit_groups, 2)
+        print("$(unit_groups[i,j])[kick]: $(unit_sgns[i,j])*X")
+        if j != size(unit_groups, 2)
+          print(", ")
+        end
+      end
+      print("}, var = {X}, X = $(strengths[i])\n")
+    end
   end
   
+
   # Now do SVD to get the principal components
   F = svd(delta_dn_dpz)
 
   # Get first N_knobs principal directions
   V = F.V
+
+  if solve_knobs > 0 # calculate least squares solution using BAGELS knobs
+    # construct new response matrix
+    SVD_delta_dn_dpz = zeros( do_amp ? length(idx_bends) : 3*length(idx_bends), solve_knobs)
+    for i=1:solve_knobs
+      SVD_delta_dn_dpz[:,i] = delta_dn_dpz*V[:,i]
+    end
+    strengths = do_amp ? SVD_delta_dn_dpz\-dn_dpz0_bends_amp : SVD_delta_dn_dpz\float.(-dn_dpz0_bends)
+  end
 
   # Create a group element with these as knobs  
   for i=1:length(F.S)
@@ -675,12 +785,18 @@ function BAGELS_2(lat, unit_bump; prefix="BAGELS", coil_regex=r".*", suffix="", 
       strength = sum(raw[idxs_coil,2])
       print(knob_out, ",\n$(coil)[kick]: $(strength)*X")
     end
-    println(knob_out, "}, var = {X}")
+    print(knob_out, "}, var = {X}")
+
+    if i <= solve_knobs
+      print(knob_out, ", X = $(strengths[i])")
+    end
+    print(knob_out, "\n ")
     close(knob_out)
   end
 
   print("\nSingular values are: ")
   print(F.S)
+
   return F
 end
 
