@@ -250,7 +250,7 @@ The vertical closed orbit unit bump types are:
 """
 function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suffix="", outf="$(lat)_BAGELS2.bmad", coil_regex=r".*",
                                   A=["spin_dn_dpz.x", "spin_dn_dpz.y", "spin_dn_dpz.z"], A_regex=r".*", 
-                                  B=nothing, B_regex=r".*"  ) #prefix="BAGELS", coil_regex=r".*", bend_regex=r".*", suffix="", outf="$(lat)_BAGELS.bmad", kick=1e-5, print_sol=false, do_amp=false, solve_knobs=0)
+                                  B=nothing, B_regex=r".*", eps_b=1e-2  ) #prefix="BAGELS", coil_regex=r".*", bend_regex=r".*", suffix="", outf="$(lat)_BAGELS.bmad", kick=1e-5, print_sol=false, do_amp=false, solve_knobs=0)
 
 
 
@@ -389,6 +389,10 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
   else
     BTB = transpose(delta_fB)*delta_fB
   end
+
+  ATA = ATA/norm(ATA)
+  BTB = BTB/norm(BTB) + eps_b*I
+  #return ATA,BTB
   F = eigen(ATA, BTB, sortby=t->-abs(t))
   #F = svd(delta_fA)
 
@@ -404,6 +408,7 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
       SVD_delta_fA[:,i] = delta_fA*V[:,i]
     end
     strengths = SVD_delta_fA\float.(-fA0)
+    println("Norm of solution: $(norm(fA0-SVD_delta_fA*strengths))")
   end
 
   # Create a group element with these as knobs  
@@ -455,8 +460,8 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
     close(knob_out)
   end
 
-  print("\nEigenvalues are: ")
-  print(vals)
+  #print("\nEigenvalues are: ")
+  #print(vals)
 
   return F
 end
