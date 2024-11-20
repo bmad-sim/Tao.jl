@@ -249,7 +249,7 @@ The vertical closed orbit unit bump types are:
 - `solve_knobs` -- (Optional) If set > 0, will print the knob settings for the first `solve_knobs` BAGELS knobs to minimize in a least squares sense dn/ddelta
 """
 function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suffix="", outf="$(lat)_BAGELS2.bmad", coil_regex=r".*",
-                                  A=["spin_dn_dpz.x", "spin_dn_dpz.y", "spin_dn_dpz.z"], A_regex=r".*", 
+                                  A=["spin_dn_dpz.x", "spin_dn_dpz.y", "spin_dn_dpz.z"], A_regex=r".*", eps_A=1e-2,
                                   B=nothing, B_regex=r".*", eps_b=1e-2  ) #prefix="BAGELS", coil_regex=r".*", bend_regex=r".*", suffix="", outf="$(lat)_BAGELS.bmad", kick=1e-5, print_sol=false, do_amp=false, solve_knobs=0)
 
 
@@ -280,11 +280,11 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
 
   #eletypes = readdlm("$(path)/responses_$(str_kick)/baseline.dlm", skipstart=2)[1:end-2,3]
   A_elenames = readdlm("$(path)/$(first(A))/baseline.dlm", ';', skipstart=2)[:,2]
-  for a in A
+  #=for a in A
     if A_elenames != readdlm("$(path)/$a/baseline.dlm", ';', skipstart=2)[:,2]
       error("Cannot combine responses in A! Different element names per calculated response. Please use BAGELS_1 with same specified `at`.")
     end
-  end
+  end=#
 
   fA0 = mapreduce(a->readdlm("$path/$a/baseline.dlm", ';', skipstart=2)[:,end], hcat,A)
   idx_A = findall(t->occursin(A_regex, t), A_elenames)
@@ -390,7 +390,7 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
     BTB = transpose(delta_fB)*delta_fB
   end
 
-  ATA = ATA/norm(ATA)
+  ATA = ATA/norm(ATA) + eps_A*I
   BTB = BTB/norm(BTB) + eps_b*I
   #return ATA,BTB
   F = eigen(ATA, BTB, sortby=t->-abs(t))
