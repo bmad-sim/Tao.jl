@@ -249,8 +249,7 @@ The vertical closed orbit unit bump types are:
 - `solve_knobs` -- (Optional) If set > 0, will print the knob settings for the first `solve_knobs` BAGELS knobs to minimize in a least squares sense dn/ddelta
 """
 function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suffix="", outf="$(lat)_BAGELS2.bmad", coil_regex=r".*",
-                                  A=["spin_dn_dpz.x", "spin_dn_dpz.y", "spin_dn_dpz.z"], A_regex=r".*", eps_A=1e-2,
-                                  B=nothing, B_regex=r".*", eps_b=1e-2  ) #prefix="BAGELS", coil_regex=r".*", bend_regex=r".*", suffix="", outf="$(lat)_BAGELS.bmad", kick=1e-5, print_sol=false, do_amp=false, solve_knobs=0)
+                                  A=[["spin_dn_dpz.x", "spin_dn_dpz.y", "spin_dn_dpz.z"]], eps_A=0, B=[["orbit.y"]], eps_B=0  ) 
 
 
 
@@ -274,38 +273,8 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
 
   path = "$(path)/BAGELS_UB$(unit_bump)/$(str_kick)"
 
-
   unit_groups_raw = readdlm("$(path)/groups.dlm", ';')
   unit_sgns_raw =  readdlm("$(path)/sgns.dlm", ';')
-
-  #eletypes = readdlm("$(path)/responses_$(str_kick)/baseline.dlm", skipstart=2)[1:end-2,3]
-  A_elenames = readdlm("$(path)/$(first(A))/baseline.dlm", ';', skipstart=2)[:,2]
-  #=for a in A
-    if A_elenames != readdlm("$(path)/$a/baseline.dlm", ';', skipstart=2)[:,2]
-      error("Cannot combine responses in A! Different element names per calculated response. Please use BAGELS_1 with same specified `at`.")
-    end
-  end=#
-
-  fA0 = mapreduce(a->readdlm("$path/$a/baseline.dlm", ';', skipstart=2)[:,end], hcat,A)
-  idx_A = findall(t->occursin(A_regex, t), A_elenames)
-  fA0 = fA0[idx_A,:]
-  fA0 = reshape(transpose(fA0), (length(A)*length(fA0[:,1]),1)) # Flatten
-
-  if !isnothing(B)
-    B_elenames = readdlm("$(path)/$(first(B))/baseline.dlm", ';', skipstart=2)[:,2]
-    for b in B
-      if B_elenames != readdlm("$(path)/$b/baseline.dlm", ';', skipstart=2)[:,2]
-        error("Cannot combine responses in B! Different element names per calculated response. Please use BAGELS_1 with same specified `at`.")
-      end
-    end
-
-    fB0 = mapreduce(b->readdlm("$path/$b/baseline.dlm", ';', skipstart=2)[:,end], hcat, B)
-    idx_B = findall(t->occursin(B_regex, t), B_elenames)
-    fB0 = fB0[idx_B,:]
-    fB0 = reshape(transpose(fB0), (length(B)*length(fB0[:,1]),1)) # Flatten
-  end
-
-
   # Only use unit groups where all coils in the group match the regex
   unit_groups_list = []
   unit_sgns_list = []
@@ -327,74 +296,68 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
 
   unit_groups = permutedims(reshape(unit_groups_list, (n_per_group,floor(Int, length(unit_groups_list)/n_per_group))))
   unit_sgns = permutedims(reshape(unit_sgns_list, (n_per_group,floor(Int, length(unit_sgns_list)/n_per_group))))
+  n_unit_bumps = length(unit_groups[:,1])
 
-  # We now will have a response matrix that is N_A x N_groups to multiply with vector N_groups x 1
-  delta_fA = zeros(length(A)*length(idx_A), length(unit_groups[:,1]))
-  if !isnothing(B) delta_fB = zeros(length(B)*length(idx_B), length(unit_groups[:,1])) end
+  function construct_response_matrix(path, F, unit_groups; normalize_submatrices=true)
+    n_unit_bumps = length(unit_groups[:,1])
+    delta_F = Matrix{Float64}(undef, 0, n_unit_bumps)
 
-  for i=1:length(unit_groups[:,1])
-    str_coils = ""
-    for j=1:length(unit_groups[i,:])
-      coil = unit_groups[i,j]
-      str_coils = str_coils * coil * "_"
-    end
-    str_coils = str_coils[1:end-1] * ".dlm"
+    curidx = 1
+    F0 = Float64[]
 
-    # for each response to A, we get the response:
-    fA = mapreduce(a->readdlm("$path/$a/$str_coils", ';', skipstart=2)[:,end], hcat,A)[idx_A,:]
-    fA = reshape(transpose(fA), (length(A)*length(fA[:,1]),1)) # Flatten
-    delta_fA[:,i] = (fA .- fA0)./kick
-
-    if !isnothing(B)
-      fB = mapreduce(b->readdlm("$path/$b/$str_coils", ';', skipstart=2)[:,end], hcat,B)[idx_B,:]
-      fB = reshape(transpose(fB), (length(B)*length(fB[:,1]),1)) # Flatten
-      delta_fB[:,i] = (fB .- fB0)./kick
-    end
-    #dn_dpz_bends = readdlm("$(path)/responses_$(str_kick)/$(str_coils)", skipstart=2)[1:end-2,6:8][idx_bends,:]
-    
-    #return dn_dpz_bends
-    #=if do_amp
-      dn_dpz_bends_amp = [norm(dn_dpz_bends[j,:]).^2 for j=1:length(dn_dpz_bends[:,1])]
-      #delta_dn_dpz_amp = dn_dpz_bends_amp .- dn_dpz0_bends_amp
-      #delta_dn_dpz_amp = [norm(delta_dn_dpz[j,:]) for j=1:length(delta_dn_dpz[:,1])]
-      delta_dn_dpz[:,i] = (dn_dpz_bends_amp .- dn_dpz0_bends_amp)./kick #(dn_dpz_bends[:,1] .- dn_dpz0_bends[:,1])./kick
-    else
-      dn_dpz_bends = reshape(transpose(dn_dpz_bends), (3*length(dn_dpz_bends[:,1]),1))
-      delta_dn_dpz[:,i] = (dn_dpz_bends .- dn_dpz0_bends)./kick
-    end =#
-  end
-
-  #=
-  if print_sol
-    strengths =  do_amp ? delta_dn_dpz\-dn_dpz0_bends_amp : delta_dn_dpz\float.(-dn_dpz0_bends)
-    #return delta_dn_dpz, -dn_dpz0_bends_amp, strengths
-    for i=1:size(unit_groups, 1)
-      print("BAGELS_SOLVE$i: group = {")
-      for j=1:size(unit_groups, 2)
-        print("$(unit_groups[i,j])[kick]: $(unit_sgns[i,j])*X")
-        if j != size(unit_groups, 2)
-          print(", ")
+    for fv in F
+      n_fv_ele = -1
+      for f in fv
+        f0 = readdlm("$path/$f/baseline.dlm", ';', skipstart=2)[:,end]
+        if n_fv_ele == -1
+          n_fv_ele = length(f0)
+        else
+          n_fv_ele == length(f0) || error("Invalid number of evaluated elements for $f in $fv ! If these quantities are to be considered on the same scale then please use BAGELS_1 with the same `at` for all.")
         end
-      end
-      print("}, var = {X}, X = $(strengths[i])\n")
-    end
-  end
-  =#
   
-  #return delta_fB
-  # Now do SVD to get the principal components
-  ATA = transpose(delta_fA)*delta_fA
-  if isnothing(B)
-    BTB = I(length(unit_groups[:,1]))
-  else
-    BTB = transpose(delta_fB)*delta_fB
+        # Add another subsubmatrix to delta_A
+        new_subsub = zeros(n_fv_ele, n_unit_bumps)
+  
+        # now get response for each coil to construct row of matrix:
+        for i=1:n_unit_bumps
+          str_coils = ""
+          for j=1:length(unit_groups[i,:])
+            coil = unit_groups[i,j]
+            str_coils = str_coils * coil * "_"
+          end
+          str_coils = str_coils[1:end-1] * ".dlm"
+  
+          fi = readdlm("$path/$f/$str_coils", ';', skipstart=2)[:,end]
+          n_fv_ele == length(fi) || error("Number of evaluated elements for $f for the unit bump $str_coil disagrees with the baseline for this unit bump ! This is a weird, hard to reach error so congrats on reaching it. Please repeat BAGELS_1 with the desired `at` for all.")
+          new_subsub[:,i] = (fi .- f0)./kick
+        end
+  
+        delta_F = vcat(delta_F, new_subsub)
+        F0 = vcat(F0, f0)
+      end
+      # here we normalize the submatrix and continue
+      if normalize_submatrices
+        delta_F[curidx:curidx-1+n_fv_ele*length(fv),:] .= delta_F[curidx:curidx-1+n_fv_ele*length(fv),:]/norm(delta_F[curidx:curidx-1+n_fv_ele*length(fv),:])
+      end
+      curidx = n_fv_ele*length(fv)+1
+    end
+
+    return delta_F, F0
   end
+
+  normed_delta_A, A0 = construct_response_matrix(path, A, unit_groups)
+  normed_delta_B, B0 = construct_response_matrix(path, B, unit_groups)
+  
+  # Now do SVD to get the principal components
+  ATA = transpose(normed_delta_A)*normed_delta_A
+  BTB = transpose(normed_delta_B)*normed_delta_B
 
   ATA = ATA/norm(ATA) + eps_A*I
-  BTB = BTB/norm(BTB) + eps_b*I
+  BTB = BTB/norm(BTB) + eps_B*I
+  #return ATA,BTB
   #return ATA,BTB
   F = eigen(ATA, BTB, sortby=t->-abs(t))
-  #F = svd(delta_fA)
+  #F = svd(delta_A)
 
   # Get first N_knobs principal directions
   #V = F.V
@@ -403,12 +366,13 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
 
   if solve_knobs > 0 # calculate least squares solution using BAGELS knobs
     # construct new response matrix
-    SVD_delta_fA = zeros( length(A)*length(idx_A), solve_knobs)
+    SVD_delta_A = zeros(size(normed_delta_A,1), solve_knobs)
+    delta_A, ___ = construct_response_matrix(path, A, unit_groups; normalize_submatrices=false)
     for i=1:solve_knobs
-      SVD_delta_fA[:,i] = delta_fA*V[:,i]
+      SVD_delta_A[:,i] = delta_A*V[:,i]
     end
-    strengths = SVD_delta_fA\float.(-fA0)
-    println("Norm of solution: $(norm(fA0-SVD_delta_fA*strengths))")
+    strengths = SVD_delta_A\float.(-A0)
+    println("Norm of solution: $(norm(A0-SVD_delta_A*strengths))")
   end
 
   # Create a group element with these as knobs  
