@@ -38,7 +38,7 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["spin_dn_dpz.x
 
   str_kick = @sprintf("%1.2e", kick) 
 
-  if unit_bump < 1 || unit_bump > 5
+  if unit_bump < 0 || unit_bump > 5
     println("Unit bump type not defined!")
     return
   end
@@ -71,7 +71,13 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["spin_dn_dpz.x
     unit_sgns_list = []
 
     # Loop through coil names and determine the unit_groups
-    if unit_bump == 1     # pi bump
+    if unit_bump == 0 # no bump just coils
+      for i=1:length(coil_names)
+        push!(unit_groups_list, coil_names[i])
+        push!(unit_sgns_list, +1.)
+      end
+      n_per_group = 1
+    elseif unit_bump == 1     # pi bump
       for i=1:length(coil_names)-1
         for j=i+1:length(coil_names)
           if abs(coil_phis[j] - coil_phis[i] - pi) < tol
@@ -261,7 +267,7 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
 
   str_kick = @sprintf("%1.2e", kick) 
 
-  if unit_bump < 1 || unit_bump > 5
+  if unit_bump < 0 || unit_bump > 5
     println("Unit bump type not defined!")
     return
   end
