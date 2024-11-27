@@ -6,6 +6,8 @@ using NLsolve
 using Interpolations
 using DataFrames, StatsBase, GLM
 using Random, Distributions
+using SparseArrays
+using Base64
 
 export  data_path,
         PolData,
@@ -28,11 +30,13 @@ export  data_path,
         read_pol_tune_scan,
         get_pol_tune_data,
         vkickers_to_quats,
-        a_e,
-        m_e
+        ANOM_E,
+        M_E
 
-const a_e = 0.00115965218128
-const m_e = 0.51099895e6
+const ANOM_E = 0.00115965218128
+const M_E = 0.51099895e6
+const CURLYH = "(1+alpha.b^2)/beta.b*eta.b^2+2*alpha.b*eta.b*etap.b+beta.b*etap.b^2"
+const G3LD =["L*g^3*spin_dn_dpz.x","L*g^3*spin_dn_dpz.y","L*g^3*spin_dn_dpz.z"]
 
 # Returns empty string if lattice not found
 function data_path(lat)
@@ -456,14 +460,14 @@ function pol_scan(lat, agamma0)
 
   # Generate tao command script
   tao_cmd = open("$(path)/spin.tao", "w")
-  a_e = 0.00115965218128
-  m_e = 0.51099895e6
+  ANOM_E = 0.00115965218128
+  M_E = 0.51099895e6
   println(tao_cmd, "set ele * spin_tracking_method = sprint")
   println(tao_cmd, "set bmad_com spin_tracking_on = T")
-  println(tao_cmd, "set ele 0 e_tot = $(agamma0[1]*m_e/a_e)")
+  println(tao_cmd, "set ele 0 e_tot = $(agamma0[1]*M_E/ANOM_E)")
   println(tao_cmd, "python -write $(path)/spin.dat spin_polarization")
   for i in Iterators.drop(eachindex(agamma0), 1)
-    println(tao_cmd, "set ele 0 e_tot = $(agamma0[i]*m_e/a_e)")
+    println(tao_cmd, "set ele 0 e_tot = $(agamma0[i]*M_E/ANOM_E)")
     println(tao_cmd, "python -append $(path)/spin.dat spin_polarization")
   end
 

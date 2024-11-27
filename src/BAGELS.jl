@@ -11,7 +11,7 @@ struct UnitBump
 end
 
 """
-    BAGELS_1(lat, unit_bump; kick=1e-5, tol=1e-8)
+    BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["L*g^3*spin_dn_dpz.x","L*g^3*spin_dn_dpz.y","L*g^3*spin_dn_dpz.z"], at="sbend::*")
 
 Best Adjustment Groups for ELectron Spin (BAGELS) method step 1: calculates the `responses` of 
 something (default is ∂n/∂δ) at certain elements in Tao format (default is `sbend::*`) with all 
@@ -29,7 +29,7 @@ combinations of the inputted vertical closed orbit bump types as the "unit bumps
 - `kick`      -- (Optional) Coil kick, default is 5e-7
 - `tol`       -- (Optional) Tolerance for difference in phase, default is 1e-8
 """
-function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["spin_dn_dpz.x", "spin_dn_dpz.y", "spin_dn_dpz.z"], at="sbend::*")
+function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["L*g^3*spin_dn_dpz.x","L*g^3*spin_dn_dpz.y","L*g^3*spin_dn_dpz.z"], at="sbend::*")
   path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
@@ -56,7 +56,7 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["spin_dn_dpz.x
       (tmppath, tao_cmd) = mktemp()
       println(tao_cmd, "set ele * kick = 0")
       println(tao_cmd, "set ele * spin_tracking_method = sprint")
-      println(tao_cmd, "show -write $(path)/vkickers.dlm lat -python vkicker::0:end -at phi_b@e23.16")
+      println(tao_cmd, "show -write $(path)/vkickers.dlm lat -python vkicker::0:end -at phi_b@e23.16 -at kick@e23.16")
       println(tao_cmd, "exit")
       close(tao_cmd)
       run(`tao -lat $lat -noplot -noinit -nostart -command "call $tmppath"`)
@@ -66,15 +66,18 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["spin_dn_dpz.x
     coil_data = readdlm("$(path)/vkickers.dlm", ';', skipstart=2)
     coil_names = coil_data[:, 2]
     coil_phis = coil_data[:, 6]
+    coil_kicks = coil_data[:,7]
 
     unit_groups_list = []
     unit_sgns_list = []
+    unit_curkicks_list = []
 
     # Loop through coil names and determine the unit_groups
     if unit_bump == 0 # no bump just coils
       for i=1:length(coil_names)
         push!(unit_groups_list, coil_names[i])
         push!(unit_sgns_list, +1.)
+        push!(unit_curkicks_list, coil_kicks[i])
       end
       n_per_group = 1
     elseif unit_bump == 1     # pi bump
@@ -85,6 +88,8 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["spin_dn_dpz.x
             push!(unit_groups_list, coil_names[j])
             push!(unit_sgns_list, +1.)
             push!(unit_sgns_list, +1.)  # Coils in pi bumps have same kick sign and strength
+            push!(unit_curkicks_list, coil_kicks[i])
+            push!(unit_curkicks_list, coil_kicks[j])
           end
         end
       end
@@ -97,6 +102,8 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["spin_dn_dpz.x
             push!(unit_groups_list, coil_names[j]) 
             push!(unit_sgns_list, +1.)
             push!(unit_sgns_list, -1.)  # Coils in 2npi bumps have opposite kick sign but same strength
+            push!(unit_curkicks_list, coil_kicks[i])
+            push!(unit_curkicks_list, coil_kicks[j])
           end
         end
       end
@@ -119,7 +126,11 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["spin_dn_dpz.x
                   push!(unit_sgns_list, +1.)
                   push!(unit_sgns_list, -1.)  
                   push!(unit_sgns_list, -1.)  
-                  push!(unit_sgns_list, +1.)  
+                  push!(unit_sgns_list, +1.) 
+                  push!(unit_curkicks_list, coil_kicks[i])
+                  push!(unit_curkicks_list, coil_kicks[j])
+                  push!(unit_curkicks_list, coil_kicks[k])
+                  push!(unit_curkicks_list, coil_kicks[l])
                 elseif abs(rem(coil_phis[j] - coil_phis[k] - pi,2*pi, RoundNearest)) < tol   # Out of phase exactly
                   push!(unit_groups_list, coil_names[i])
                   push!(unit_groups_list, coil_names[j])
@@ -129,6 +140,10 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["spin_dn_dpz.x
                   push!(unit_sgns_list, -1.) 
                   push!(unit_sgns_list, +1.) 
                   push!(unit_sgns_list, -1.) 
+                  push!(unit_curkicks_list, coil_kicks[i])
+                  push!(unit_curkicks_list, coil_kicks[j])
+                  push!(unit_curkicks_list, coil_kicks[k])
+                  push!(unit_curkicks_list, coil_kicks[l])
                 end
               end
             end
@@ -144,6 +159,8 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["spin_dn_dpz.x
             push!(unit_groups_list, coil_names[j]) 
             push!(unit_sgns_list, +1.)
             push!(unit_sgns_list, -1.)  # Coils in 2pi bumps have opposite kick sign but same strength
+            push!(unit_curkicks_list, coil_kicks[i])
+            push!(unit_curkicks_list, coil_kicks[j])
           end
         end
       end
@@ -165,6 +182,10 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["spin_dn_dpz.x
                   push!(unit_sgns_list, +1.)  
                   push!(unit_sgns_list, +1.)  
                   push!(unit_sgns_list, +1.)  
+                  push!(unit_curkicks_list, coil_kicks[i])
+                  push!(unit_curkicks_list, coil_kicks[j])
+                  push!(unit_curkicks_list, coil_kicks[k])
+                  push!(unit_curkicks_list, coil_kicks[l])
                 end
               end
             end
@@ -179,27 +200,30 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["spin_dn_dpz.x
   
     unit_groups = permutedims(reshape(unit_groups_list, n_per_group, Int(length(unit_groups_list)/n_per_group)))
     unit_sgns = permutedims(reshape(unit_sgns_list, n_per_group, Int(length(unit_sgns_list)/n_per_group)))
-    
+    unit_curkicks = permutedims(reshape(unit_curkicks_list, n_per_group, Int(length(unit_curkicks_list)/n_per_group)))
+
     writedlm("$(path)/groups.dlm", unit_groups, ';')
     writedlm("$(path)/sgns.dlm", unit_sgns, ';')
+    writedlm("$(path)/curkicks.dlm", unit_curkicks, ';')
   end
 
   unit_groups = readdlm("$(path)/groups.dlm", ';')
   unit_sgns =  readdlm("$(path)/sgns.dlm", ';')
+  unit_curkicks =  readdlm("$(path)/curkicks.dlm", ';')
 
 
   # Now find the response for each 
   (tmppath, tao_cmd) = mktemp()# open("$(path)/responses_$(str_kick)/BAGELS_1.cmd", "w")
-  println(tao_cmd, "set ele * kick = 0")
   println(tao_cmd, "set ele * spin_tracking_method = sprint")
   println(tao_cmd, "set bmad_com spin_tracking_on = T")
 
   # First the baseline:
   for response in responses
-    if !isdir("$(path)/$(response)")
-      mkdir("$(path)/$(response)")
+    str_response = base64encode(response)
+    if !isdir("$(path)/$(str_response)")
+      mkdir("$(path)/$(str_response)")
     end
-    println(tao_cmd, "show -write $(path)/$(response)/baseline.dlm lat -python $at -at $response@e23.16")
+    println(tao_cmd, "show -write $(path)/$(str_response)/baseline.dlm lat -python $at -at ($response)@e23.16")
   end
   
   # Now go through each unit bump:
@@ -209,17 +233,20 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["spin_dn_dpz.x
     for j=1:length(unit_groups[i,:])
       coil = unit_groups[i,j]
       sgn = unit_sgns[i,j]
-      println(tao_cmd, "set ele $(coil) kick = $(sgn*kick)")
+      curkick = unit_curkicks[i,j]
+      println(tao_cmd, "set ele $(coil) kick = $(curkick+sgn*kick)")
       str_coils = str_coils * coil * "_"
     end
     str_coils = str_coils[1:end-1] * ".dlm"
     for response in responses
-      println(tao_cmd, "show -write $(path)/$(response)/$str_coils lat -python $at -at $response@e23.16")
+      str_response = base64encode(response)
+      println(tao_cmd, "show -write $(path)/$(str_response)/$str_coils lat -python $at -at ($response)@e23.16")
     end
     # Reset coils to original strengths
     for j=1:length(unit_groups[i,:])
       coil = unit_groups[i,j]
-      println(tao_cmd, "set ele $(coil) kick = 0")
+      curkick = unit_curkicks[i,j]
+      println(tao_cmd, "set ele $(coil) kick = $(curkick)")
     end
   end
   println(tao_cmd, "exit")
@@ -229,7 +256,9 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["spin_dn_dpz.x
 end
 
 """
-    BAGELS_2(lat, unit_bump; prefix="BAGELS", coil_regex=r".*", bend_regex=r".*", suffix="", outf="\$(lat)_BAGELS.bmad", kick=1e-5, print_sol=false, do_amp=false)
+    BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suffix="", outf="\$(lat)_BAGELS.bmad", coil_regex=r".*",
+              A=[["L*g^3*spin_dn_dpz.x","L*g^3*spin_dn_dpz.y","L*g^3*spin_dn_dpz.z"]], eps_A=0, B=[["orbit.y"],["orbit.py"]], eps_B=0 ,
+              w_A=ones(length(A)), w_B=zeros(length(B))) 
 
 Best Adjustment Groups for ELectron Spin (BAGELS) method step 2: peform an SVD of the 
 response matrix to obtain the best adjustment groups, based on the settings of step 1. 
@@ -254,8 +283,9 @@ The vertical closed orbit unit bump types are:
 - `do_amp`     -- (Optional) If true, calculates response matrix of |dn/ddelta| instead of dn/ddelta.x, which is the default 
 - `solve_knobs` -- (Optional) If set > 0, will print the knob settings for the first `solve_knobs` BAGELS knobs to minimize in a least squares sense dn/ddelta
 """
-function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suffix="", outf="$(lat)_BAGELS2.bmad", coil_regex=r".*",
-                                  A=[["spin_dn_dpz.x", "spin_dn_dpz.y", "spin_dn_dpz.z"]], eps_A=0, B=[["orbit.y"]], eps_B=0  ) 
+function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suffix="", outf="$(lat)_BAGELS.bmad", coil_regex=r".*",
+                                  A=[["L*g^3*spin_dn_dpz.x","L*g^3*spin_dn_dpz.y","L*g^3*spin_dn_dpz.z"]], eps_A=0, B=[["orbit.y"]], eps_B=0 ,
+                                  w_A=ones(length(A)), w_B=zeros(length(B))) 
 
 
 
@@ -304,25 +334,26 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
   unit_sgns = permutedims(reshape(unit_sgns_list, (n_per_group,floor(Int, length(unit_sgns_list)/n_per_group))))
   n_unit_bumps = length(unit_groups[:,1])
 
-  function construct_response_matrix(path, F, unit_groups; normalize_submatrices=true)
+  function construct_response_matrix(path, F, unit_groups; normalize_submatrices=true, weights=ones(length(F)))
     n_unit_bumps = length(unit_groups[:,1])
     delta_F = Matrix{Float64}(undef, 0, n_unit_bumps)
 
     curidx = 1
     F0 = Float64[]
-
-    for fv in F
-      n_fv_ele = -1
-      for f in fv
-        f0 = readdlm("$path/$f/baseline.dlm", ';', skipstart=2)[:,end]
-        if n_fv_ele == -1
-          n_fv_ele = length(f0)
+    length(F) == length(weights) || error("Incorrect length for weights array!")
+    for (rv,weight) in zip(F, weights)
+      n_rv_ele = -1
+      for response in rv
+        str_response = base64encode(response)
+        f0 = readdlm("$path/$str_response/baseline.dlm", ';', skipstart=2)[:,end]
+        if n_rv_ele == -1
+          n_rv_ele = length(f0)
         else
-          n_fv_ele == length(f0) || error("Invalid number of evaluated elements for $f in $fv ! If these quantities are to be considered on the same scale then please use BAGELS_1 with the same `at` for all.")
+          n_rv_ele == length(f0) || error("Invalid number of evaluated elements for $response in $rv ! If these quantities are to be considered on the same scale then please use BAGELS_1 with the same `at` for all.")
         end
   
         # Add another subsubmatrix to delta_A
-        new_subsub = zeros(n_fv_ele, n_unit_bumps)
+        new_subsub = zeros(n_rv_ele, n_unit_bumps)
   
         # now get response for each coil to construct row of matrix:
         for i=1:n_unit_bumps
@@ -333,8 +364,8 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
           end
           str_coils = str_coils[1:end-1] * ".dlm"
   
-          fi = readdlm("$path/$f/$str_coils", ';', skipstart=2)[:,end]
-          n_fv_ele == length(fi) || error("Number of evaluated elements for $f for the unit bump $str_coil disagrees with the baseline for this unit bump ! This is a weird, hard to reach error so congrats on reaching it. Please repeat BAGELS_1 with the desired `at` for all.")
+          fi = readdlm("$path/$str_response/$str_coils", ';', skipstart=2)[:,end]
+          n_rv_ele == length(fi) || error("Number of evaluated elements for $response for the unit bump $str_coil disagrees with the baseline for this unit bump ! This is a weird, hard to reach error so congrats on reaching it. Please repeat BAGELS_1 with the desired `at` for all.")
           new_subsub[:,i] = (fi .- f0)./kick
         end
   
@@ -343,9 +374,11 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
       end
       # here we normalize the submatrix and continue
       if normalize_submatrices
-        delta_F[curidx:curidx-1+n_fv_ele*length(fv),:] .= delta_F[curidx:curidx-1+n_fv_ele*length(fv),:]/norm(delta_F[curidx:curidx-1+n_fv_ele*length(fv),:])
+        delta_F[curidx:curidx-1+n_rv_ele*length(rv),:] .= delta_F[curidx:curidx-1+n_rv_ele*length(rv),:]/norm(delta_F[curidx:curidx-1+n_rv_ele*length(rv),:])
       end
-      curidx = n_fv_ele*length(fv)+1
+      # Multiply the weight
+      delta_F[curidx:curidx-1+n_rv_ele*length(rv),:] .= weight*delta_F[curidx:curidx-1+n_rv_ele*length(rv),:]
+      curidx = n_rv_ele*length(rv)+1
     end
 
     return delta_F, F0
@@ -353,32 +386,44 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
 
   normed_delta_A, A0 = construct_response_matrix(path, A, unit_groups)
   normed_delta_B, B0 = construct_response_matrix(path, B, unit_groups)
+
   
   # Now do SVD to get the principal components
   ATA = transpose(normed_delta_A)*normed_delta_A
   BTB = transpose(normed_delta_B)*normed_delta_B
+  #return normed_delta_B #ATA, BTB
+  #ATA = sparse(ATA)
+  #BTB = sparse(BTB)
+  #decomp, history = partialschur(A, nev=10, tol=1e-6, which=:SR);
 
-  ATA = ATA/norm(ATA) + eps_A*I
-  BTB = BTB/norm(BTB) + eps_B*I
+  ATA = Symmetric(ATA/norm(ATA) + eps_A*I)
+  BTB = Symmetric(BTB/norm(BTB) + eps_B*I)
+
+  println("Condition number of A'A = $(cond(ATA))")
+  println("Condition number of B'B = $(cond(BTB))")
   #return ATA,BTB
   #return ATA,BTB
   F = eigen(ATA, BTB, sortby=t->-abs(t))
   #F = svd(delta_A)
-
+  #return normed_delta_B, B0, F.vectors
   # Get first N_knobs principal directions
   #V = F.V
   V = F.vectors
   vals = F.values
 
   if solve_knobs > 0 # calculate least squares solution using BAGELS knobs
-    # construct new response matrix
-    SVD_delta_A = zeros(size(normed_delta_A,1), solve_knobs)
-    delta_A, ___ = construct_response_matrix(path, A, unit_groups; normalize_submatrices=false)
+    # construct new response matrix as combined 
+    #SVD_delta = zeros(size(normed_delta_A,1), solve_knobs)
+    SVD_delta = zeros(size(normed_delta_A,1)+size(normed_delta_B,1), solve_knobs)
+    delta_A, ___ = construct_response_matrix(path, A, unit_groups; normalize_submatrices=false, weights=w_A)
+    delta_B, ___ = construct_response_matrix(path, B, unit_groups; normalize_submatrices=false, weights=w_B)
     for i=1:solve_knobs
-      SVD_delta_A[:,i] = delta_A*V[:,i]
+      SVD_delta[1:size(normed_delta_A,1),i] =  delta_A*V[:,i]
+      SVD_delta[size(normed_delta_A,1)+1:end,i] = delta_B*V[:,i]
     end
-    strengths = SVD_delta_A\float.(-A0)
-    println("Norm of solution: $(norm(A0-SVD_delta_A*strengths))")
+    #strengths = SVD_delta\float.(-A0)
+    strengths = SVD_delta\float.(-vcat(A0,B0))
+    println("Norm of solution: $(norm(vcat(A0,B0)-SVD_delta*strengths))")
   end
 
   # Create a group element with these as knobs  
@@ -428,8 +473,9 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
     end
     print(knob_out, "\n ")
     close(knob_out)
+    
   end
-
+  println("Solution written to file $outf")
   #print("\nEigenvalues are: ")
   #print(vals)
 
