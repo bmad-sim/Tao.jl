@@ -17,13 +17,11 @@ Best Adjustment Groups for ELectron Spin (BAGELS) method step 1: calculates the 
 something (default is ∂n/∂δ) at certain elements in Tao format (default is `sbend::*`) with all 
 combinations of the inputted vertical closed orbit bump types as the "unit bumps". The types are:
 
+0. `no` bump              -- Delocalized orbit, delocalized coupling, delocalized disperion
 1. `pi` bump              -- Delocalized coupling, delocalized dispersion
-2. `2pin` bump            -- Localized coupling, delocalized dispersion
-3. `opposing_2pin` bumps  -- Localized coupling, localized dispersion
-4. `2pi` bump             -- Localized coupling, delocalized dispersion
-5. `opposing_pi` bumps    -- Delocalized coupling, localized dispersion
-6. `opposing_2pi` bumps   -- Localized coupling, localized dispersion
-7. `BAGELS` bumps
+2. `2pi` bump             -- Localized coupling, delocalized dispersion
+3. `equal_pi` bumps       -- Delocalized coupling, localized dispersion
+4. `opposite_pi` bumps    -- Localized coupling, Localized dispersion
 
 ### Input
 - `lat`       -- lat file name
@@ -39,11 +37,6 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-6, responses=Tao.DEPOL, at="
   end
 
   str_kick = @sprintf("%1.2e", kick) 
-
-  if unit_bump < 0 || unit_bump > 7
-    println("Unit bump type not defined!")
-    return
-  end
 
   # Generate directory in lattice data path for this unit bump
   if !ispath("$(path)/BAGELS_UB$(unit_bump)/$(str_kick)")
@@ -96,64 +89,7 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-6, responses=Tao.DEPOL, at="
         end
       end
       n_per_group = 2
-    elseif unit_bump == 2 # 2pin bump
-      for i=1:length(coil_names)-1
-        for j=i+1:length(coil_names)
-          if abs(rem(coil_phis[j] - coil_phis[i], 2*pi, RoundNearest)) < tol
-            push!(unit_groups_list, coil_names[i])
-            push!(unit_groups_list, coil_names[j]) 
-            push!(unit_sgns_list, +1.)
-            push!(unit_sgns_list, -1.)  # Coils in 2npi bumps have opposite kick sign but same strength
-            push!(unit_curkicks_list, coil_kicks[i])
-            push!(unit_curkicks_list, coil_kicks[j])
-          end
-        end
-      end
-      n_per_group = 2
-    elseif unit_bump == 3 # opposing_2pin bumps
-      for i=1:length(coil_names)-3
-        for j=i+1:length(coil_names)-2
-          for k=j+1:length(coil_names)-1
-            for l=k+1:length(coil_names)
-              # The second two coils can be either in phase (2pin apart) and opposite sign, or out of 
-              # phase with same sign)
-              # First set and second set must be separate n2pi bump:
-              if abs(rem(coil_phis[j] - coil_phis[i], 2*pi, RoundNearest)) < tol && abs(rem(coil_phis[l] - coil_phis[k], 2*pi, RoundNearest)) < tol
-                # Now check if either in phase exactly or out of phase exactly:
-                if abs(rem(coil_phis[j] -coil_phis[k], 2*pi, RoundNearest)) < tol   # In phase exactly
-                  push!(unit_groups_list, coil_names[i])
-                  push!(unit_groups_list, coil_names[j])
-                  push!(unit_groups_list, coil_names[k])
-                  push!(unit_groups_list, coil_names[l])
-                  push!(unit_sgns_list, +1.)
-                  push!(unit_sgns_list, -1.)  
-                  push!(unit_sgns_list, -1.)  
-                  push!(unit_sgns_list, +1.) 
-                  push!(unit_curkicks_list, coil_kicks[i])
-                  push!(unit_curkicks_list, coil_kicks[j])
-                  push!(unit_curkicks_list, coil_kicks[k])
-                  push!(unit_curkicks_list, coil_kicks[l])
-                elseif abs(rem(coil_phis[j] - coil_phis[k] - pi,2*pi, RoundNearest)) < tol   # Out of phase exactly
-                  push!(unit_groups_list, coil_names[i])
-                  push!(unit_groups_list, coil_names[j])
-                  push!(unit_groups_list, coil_names[k])
-                  push!(unit_groups_list, coil_names[l])
-                  push!(unit_sgns_list, +1.)
-                  push!(unit_sgns_list, -1.) 
-                  push!(unit_sgns_list, +1.) 
-                  push!(unit_sgns_list, -1.) 
-                  push!(unit_curkicks_list, coil_kicks[i])
-                  push!(unit_curkicks_list, coil_kicks[j])
-                  push!(unit_curkicks_list, coil_kicks[k])
-                  push!(unit_curkicks_list, coil_kicks[l])
-                end
-              end
-            end
-          end
-        end
-      end
-      n_per_group = 4
-    elseif unit_bump == 4 # 2pi bump
+    elseif unit_bump == 2 # 2pi bump
       for i=1:length(coil_names)-1
         for j=i+1:length(coil_names)
           if abs(coil_phis[j] - coil_phis[i] - 2*pi) < tol
@@ -167,79 +103,26 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-6, responses=Tao.DEPOL, at="
         end
       end
       n_per_group = 2
-    elseif unit_bump == 5 # opposing_pi bumps
+    elseif unit_bump == 3 # equal_pi bumps
       for i=1:length(coil_names)
         for j=i:length(coil_names)
           for k=j:length(coil_names)
-            for l=k:length(coil_names)
-              # First set and second set must be separate pi bump:
-              if abs(coil_phis[j] - coil_phis[i]- pi) < tol && abs(coil_phis[l] - coil_phis[k] - pi) < tol
-                # Now check if either 2*pi apart
-                if abs(rem(coil_phis[j] - coil_phis[k], 2*pi, RoundNearest)) < tol  
-                  push!(unit_groups_list, coil_names[i])
-                  push!(unit_groups_list, coil_names[j])
-                  push!(unit_groups_list, coil_names[k])
-                  push!(unit_groups_list, coil_names[l])
-                  push!(unit_sgns_list, +1.)
-                  push!(unit_sgns_list, +1.)  
-                  push!(unit_sgns_list, +1.)  
-                  push!(unit_sgns_list, +1.)  
-                  push!(unit_curkicks_list, coil_kicks[i])
-                  push!(unit_curkicks_list, coil_kicks[j])
-                  push!(unit_curkicks_list, coil_kicks[k])
-                  push!(unit_curkicks_list, coil_kicks[l])
-                end
-              end
+            if abs(coil_phis[j] - coil_phis[i]- pi) < tol && abs(coil_phis[k] - coil_phis[j] - pi) < tol
+              push!(unit_groups_list, coil_names[i])
+              push!(unit_groups_list, coil_names[j])
+              push!(unit_groups_list, coil_names[k])
+              push!(unit_sgns_list, +1.)
+              push!(unit_sgns_list, +2.)  
+              push!(unit_sgns_list, +1.)    
+              push!(unit_curkicks_list, coil_kicks[i])
+              push!(unit_curkicks_list, coil_kicks[j])
+              push!(unit_curkicks_list, coil_kicks[k])
             end
           end
         end
       end
-      n_per_group = 4
-    elseif unit_bump == 6 # opposing_2pi bumps
-      for i=1:length(coil_names)-3
-        for j=i+1:length(coil_names)-2
-          for k=j+1:length(coil_names)-1
-            for l=k+1:length(coil_names)
-              # The second two coils can be either in phase (2pin apart) and opposite sign, or out of 
-              # phase with same sign)
-              if abs(coil_phis[j] - coil_phis[i] - 2*pi) < tol && abs(coil_phis[l] - coil_phis[k] - 2*pi) < tol
-                # Now check if either in phase exactly or out of phase exactly:
-                if abs(rem(coil_phis[j] -coil_phis[k], 2*pi, RoundNearest)) < tol   # In phase exactly
-                  push!(unit_groups_list, coil_names[i])
-                  push!(unit_groups_list, coil_names[j])
-                  push!(unit_groups_list, coil_names[k])
-                  push!(unit_groups_list, coil_names[l])
-                  push!(unit_sgns_list, +1.)
-                  push!(unit_sgns_list, -1.)  
-                  push!(unit_sgns_list, -1.)  
-                  push!(unit_sgns_list, +1.) 
-                  push!(unit_curkicks_list, coil_kicks[i])
-                  push!(unit_curkicks_list, coil_kicks[j])
-                  push!(unit_curkicks_list, coil_kicks[k])
-                  push!(unit_curkicks_list, coil_kicks[l])
-                elseif abs(rem(coil_phis[j] - coil_phis[k] - pi,2*pi, RoundNearest)) < tol   # Out of phase exactly
-                  push!(unit_groups_list, coil_names[i])
-                  push!(unit_groups_list, coil_names[j])
-                  push!(unit_groups_list, coil_names[k])
-                  push!(unit_groups_list, coil_names[l])
-                  push!(unit_sgns_list, +1.)
-                  push!(unit_sgns_list, -1.) 
-                  push!(unit_sgns_list, +1.) 
-                  push!(unit_sgns_list, -1.) 
-                  push!(unit_curkicks_list, coil_kicks[i])
-                  push!(unit_curkicks_list, coil_kicks[j])
-                  push!(unit_curkicks_list, coil_kicks[k])
-                  push!(unit_curkicks_list, coil_kicks[l])
-                end
-              end
-            end
-          end
-        end
-      end
-      n_per_group = 4
-    elseif unit_bump == 7 # quad pi bumps
-      # we have to allow overlapping here now
-      # but max number of coils per group is indeed 8
+      n_per_group = 3
+    elseif unit_bump == 4 # opposite_pi bumps
       for i=1:length(coil_names)
         for j=i+1:length(coil_names)
           if abs(coil_phis[j] - coil_phis[i] - pi) < tol
@@ -343,12 +226,11 @@ Best Adjustment Groups for ELectron Spin (BAGELS) method step 2: peform an SVD o
 response matrix to obtain the best adjustment groups, based on the settings of step 1. 
 The vertical closed orbit unit bump types are:
 
+0. `no` bump              -- Delocalized orbit, delocalized coupling, delocalized disperion
 1. `pi` bump              -- Delocalized coupling, delocalized dispersion
-2. `2pin` bump            -- Localized coupling, delocalized dispersion
-3. `opposing_2pin` bumps  -- Localized coupling, localized dispersion
-4. `2pi` bump             -- Localized coupling, delocalized dispersion
-5. `opposing_pi` bumps    -- Delocalized coupling, localized dispersion
-6. `opposing_2pi` bumps   -- Localized coupling, localized dispersion
+2. `2pi` bump             -- Localized coupling, delocalized dispersion
+3. `equal_pi` bumps       -- Delocalized coupling, localized dispersion
+4. `opposite_pi` bumps    -- Localized coupling, Localized dispersion
 
 ### Input
 - `lat`       -- lat file name
