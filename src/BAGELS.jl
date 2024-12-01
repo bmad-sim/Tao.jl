@@ -23,8 +23,7 @@ combinations of the inputted vertical closed orbit bump types as the "unit bumps
 4. `2pi` bump             -- Localized coupling, delocalized dispersion
 5. `opposing_pi` bumps    -- Delocalized coupling, localized dispersion
 6. `opposing_2pi` bumps   -- Localized coupling, localized dispersion
-7. `quad shit bumps` bumps
-8. `BAGELS` bumps
+7. `BAGELS` bumps
 
 ### Input
 - `lat`       -- lat file name
@@ -244,65 +243,23 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-6, responses=Tao.DEPOL, at="
       for i=1:length(coil_names)
         for j=i+1:length(coil_names)
           if abs(coil_phis[j] - coil_phis[i] - pi) < tol
-            println("Found pi bump: $(coil_names[i]) and $(coil_names[j])")
             for k=j:length(coil_names)
-              if abs(rem(coil_phis[k] -coil_phis[j], 2*pi, RoundNearest)) < tol
-                println("These coils are 2*pi*n apart: $(coil_names[j]) and $(coil_names[k])")
+              if abs(coil_phis[k]-coil_phis[j]-pi) < tol #abs(rem(coil_phis[k] -coil_phis[j]-pi, 2*pi, RoundNearest)) < tol
                 for l=k+1:length(coil_names)
                   if abs(coil_phis[l] - coil_phis[k] - pi) < tol
-                    println("And it is the start of another pi bump!: $(coil_names[k]) and $(coil_names[l])")
-                    println("OK we have one pair of pi bumps which cancel dispersion, let's look for a second pair in/out of phase")
-                    for m=l:length(coil_names)
-                      if coil_names[m] != coil_names[k] && abs(rem(coil_phis[m] -coil_phis[j], 2*pi, RoundNearest)) < tol
-                        println("This coil is 2*pi*n from end of first pi bump: $(coil_names[j]) and $(coil_names[m])")
-                        for n=m+1:length(coil_names)
-                          print("Checking if $(coil_names[m]) and $(coil_names[n]) are a pi bump... ")
-                          if abs(coil_phis[n] - coil_phis[m] - pi) < tol
-                            println("Found second pi bump: $(coil_names[m]) and $(coil_names[n])")
-                            for o=n:length(coil_names)
-                              if coil_names[o] != coil_names[k] && abs(rem(coil_phis[o] -coil_phis[n], 2*pi, RoundNearest)) < tol # && abs(rem(coil_phis[j] -coil_phis[m], 2*pi, RoundNearest)) < tol
-                                println("This coil is 2*pi*n apart from end of second pi bump: $(coil_names[n]) and $(coil_names[o])")
-                                for p=o+1:length(coil_names)
-                                  print("Checking if $(coil_names[o]) and $(coil_names[p]) are a pi bump... ")
-                                  if abs(coil_phis[p] - coil_phis[o] - pi) < tol
-                                  # Now we know that i,j,k,l are positive and m,n,o,p are negative
-                                    println("Found combination: $([coil_names[i], coil_names[j], coil_names[k], coil_names[l], coil_names[m], coil_names[n], coil_names[o], coil_names[p]])")
-                                    push!(unit_groups_list, coil_names[i])
-                                    push!(unit_groups_list, coil_names[j])
-                                    push!(unit_groups_list, coil_names[k])
-                                    push!(unit_groups_list, coil_names[l])
-                                    push!(unit_groups_list, coil_names[m])
-                                    push!(unit_groups_list, coil_names[n])
-                                    push!(unit_groups_list, coil_names[o])
-                                    push!(unit_groups_list, coil_names[p])
-                                    push!(unit_sgns_list, +1.)
-                                    push!(unit_sgns_list, +1.)  
-                                    push!(unit_sgns_list, +1.)  
-                                    push!(unit_sgns_list, +1.) 
-                                    push!(unit_sgns_list, -1.)
-                                    push!(unit_sgns_list, -1.)  
-                                    push!(unit_sgns_list, -1.)  
-                                    push!(unit_sgns_list, -1.) 
-                                    push!(unit_curkicks_list, coil_kicks[i])
-                                    push!(unit_curkicks_list, coil_kicks[j])
-                                    push!(unit_curkicks_list, coil_kicks[k])
-                                    push!(unit_curkicks_list, coil_kicks[l])
-                                    push!(unit_curkicks_list, coil_kicks[m])
-                                    push!(unit_curkicks_list, coil_kicks[n])
-                                    push!(unit_curkicks_list, coil_kicks[o])
-                                    push!(unit_curkicks_list, coil_kicks[p])
-                                  else
-                                    print("nope\n")
-                                  end
-                                end
-                              end
-                            end
-                          else
-                            print("Nope\n")
-                          end
-                        end
-                      end
-                    end
+                    # Opposite sign bumps pi away give you BAGELS
+                    push!(unit_groups_list, coil_names[i])
+                    push!(unit_groups_list, coil_names[j])
+                    push!(unit_groups_list, coil_names[k])
+                    push!(unit_groups_list, coil_names[l])
+                    push!(unit_sgns_list, +1.)
+                    push!(unit_sgns_list, +1.) 
+                    push!(unit_sgns_list, -1.) 
+                    push!(unit_sgns_list, -1.) 
+                    push!(unit_curkicks_list, coil_kicks[i])
+                    push!(unit_curkicks_list, coil_kicks[j])
+                    push!(unit_curkicks_list, coil_kicks[k])
+                    push!(unit_curkicks_list, coil_kicks[l])
                   end
                 end
               end
@@ -310,7 +267,7 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-6, responses=Tao.DEPOL, at="
           end
         end
       end
-      n_per_group = 8
+      n_per_group = 4
     end
 
     # Info to store is: each coil in the group, each of their current strengths, and each of their kick sgns/mags
