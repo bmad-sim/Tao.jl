@@ -35,7 +35,10 @@ export  data_path,
 
 const ANOM_E = 0.00115965218128
 const M_E = 0.51099895e6
-const CURLYH = "(1+alpha.b^2)/beta.b*eta.b^2+2*alpha.b*eta.b*etap.b+beta.b*etap.b^2"
+#const CURLYH = "(1+alpha.b^2)/beta.b*eta.b^2+2*alpha.b*eta.b*etap.b+beta.b*etap.b^2"
+const ETAB_BAR = ["eta.b/sqrt(beta.b)", "eta.b*alpha.b/sqrt(beta.b)+etap.b*sqrt(beta.b)"]
+const C_BAR = ["cbar.11","cbar.12","cbar.21","cbar.22"]
+const DEPOL = ["sqrt(L*abs(g)^3)*spin_dn_dpz.x","sqrt(L*abs(g)^3)*spin_dn_dpz.y","sqrt(L*abs(g)^3)*spin_dn_dpz.z"]
 const G3LD =["L*g^3*spin_dn_dpz.x","L*g^3*spin_dn_dpz.y","L*g^3*spin_dn_dpz.z"]
 
 # Returns empty string if lattice not found

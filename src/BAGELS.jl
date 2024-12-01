@@ -11,7 +11,7 @@ struct UnitBump
 end
 
 """
-    BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["L*g^3*spin_dn_dpz.x","L*g^3*spin_dn_dpz.y","L*g^3*spin_dn_dpz.z"], at="sbend::*")
+    BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-6, responses=Tao.DEPOL, at="sbend::*")
 
 Best Adjustment Groups for ELectron Spin (BAGELS) method step 1: calculates the `responses` of 
 something (default is ∂n/∂δ) at certain elements in Tao format (default is `sbend::*`) with all 
@@ -22,14 +22,17 @@ combinations of the inputted vertical closed orbit bump types as the "unit bumps
 3. `opposing_2pin` bumps  -- Localized coupling, localized dispersion
 4. `2pi` bump             -- Localized coupling, delocalized dispersion
 5. `opposing_pi` bumps    -- Delocalized coupling, localized dispersion
+6. `opposing_2pi` bumps   -- Localized coupling, localized dispersion
+7. `quad shit bumps` bumps
+8. `BAGELS` bumps
 
 ### Input
 - `lat`       -- lat file name
 - `unit_bump` -- Type of unit closed orbit bump. Options are: (1) `pi`, (2) `2pin`, (3) `opposing_2pin`, (4) `2pi`, (5) `opposing_pi`
 - `kick`      -- (Optional) Coil kick, default is 5e-7
-- `tol`       -- (Optional) Tolerance for difference in phase, default is 1e-8
+- `tol`       -- (Optional) Tolerance for difference in phase, default is 1e-6
 """
-function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["L*g^3*spin_dn_dpz.x","L*g^3*spin_dn_dpz.y","L*g^3*spin_dn_dpz.z"], at="sbend::*")
+function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-6, responses=Tao.DEPOL, at="sbend::*")
   path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
@@ -38,7 +41,7 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["L*g^3*spin_dn
 
   str_kick = @sprintf("%1.2e", kick) 
 
-  if unit_bump < 0 || unit_bump > 5
+  if unit_bump < 0 || unit_bump > 7
     println("Unit bump type not defined!")
     return
   end
@@ -193,6 +196,121 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["L*g^3*spin_dn
         end
       end
       n_per_group = 4
+    elseif unit_bump == 6 # opposing_2pi bumps
+      for i=1:length(coil_names)-3
+        for j=i+1:length(coil_names)-2
+          for k=j+1:length(coil_names)-1
+            for l=k+1:length(coil_names)
+              # The second two coils can be either in phase (2pin apart) and opposite sign, or out of 
+              # phase with same sign)
+              if abs(coil_phis[j] - coil_phis[i] - 2*pi) < tol && abs(coil_phis[l] - coil_phis[k] - 2*pi) < tol
+                # Now check if either in phase exactly or out of phase exactly:
+                if abs(rem(coil_phis[j] -coil_phis[k], 2*pi, RoundNearest)) < tol   # In phase exactly
+                  push!(unit_groups_list, coil_names[i])
+                  push!(unit_groups_list, coil_names[j])
+                  push!(unit_groups_list, coil_names[k])
+                  push!(unit_groups_list, coil_names[l])
+                  push!(unit_sgns_list, +1.)
+                  push!(unit_sgns_list, -1.)  
+                  push!(unit_sgns_list, -1.)  
+                  push!(unit_sgns_list, +1.) 
+                  push!(unit_curkicks_list, coil_kicks[i])
+                  push!(unit_curkicks_list, coil_kicks[j])
+                  push!(unit_curkicks_list, coil_kicks[k])
+                  push!(unit_curkicks_list, coil_kicks[l])
+                elseif abs(rem(coil_phis[j] - coil_phis[k] - pi,2*pi, RoundNearest)) < tol   # Out of phase exactly
+                  push!(unit_groups_list, coil_names[i])
+                  push!(unit_groups_list, coil_names[j])
+                  push!(unit_groups_list, coil_names[k])
+                  push!(unit_groups_list, coil_names[l])
+                  push!(unit_sgns_list, +1.)
+                  push!(unit_sgns_list, -1.) 
+                  push!(unit_sgns_list, +1.) 
+                  push!(unit_sgns_list, -1.) 
+                  push!(unit_curkicks_list, coil_kicks[i])
+                  push!(unit_curkicks_list, coil_kicks[j])
+                  push!(unit_curkicks_list, coil_kicks[k])
+                  push!(unit_curkicks_list, coil_kicks[l])
+                end
+              end
+            end
+          end
+        end
+      end
+      n_per_group = 4
+    elseif unit_bump == 7 # quad pi bumps
+      # we have to allow overlapping here now
+      # but max number of coils per group is indeed 8
+      for i=1:length(coil_names)
+        for j=i+1:length(coil_names)
+          if abs(coil_phis[j] - coil_phis[i] - pi) < tol
+            println("Found pi bump: $(coil_names[i]) and $(coil_names[j])")
+            for k=j:length(coil_names)
+              if abs(rem(coil_phis[k] -coil_phis[j], 2*pi, RoundNearest)) < tol
+                println("These coils are 2*pi*n apart: $(coil_names[j]) and $(coil_names[k])")
+                for l=k+1:length(coil_names)
+                  if abs(coil_phis[l] - coil_phis[k] - pi) < tol
+                    println("And it is the start of another pi bump!: $(coil_names[k]) and $(coil_names[l])")
+                    println("OK we have one pair of pi bumps which cancel dispersion, let's look for a second pair in/out of phase")
+                    for m=l:length(coil_names)
+                      if coil_names[m] != coil_names[k] && abs(rem(coil_phis[m] -coil_phis[j], 2*pi, RoundNearest)) < tol
+                        println("This coil is 2*pi*n from end of first pi bump: $(coil_names[j]) and $(coil_names[m])")
+                        for n=m+1:length(coil_names)
+                          print("Checking if $(coil_names[m]) and $(coil_names[n]) are a pi bump... ")
+                          if abs(coil_phis[n] - coil_phis[m] - pi) < tol
+                            println("Found second pi bump: $(coil_names[m]) and $(coil_names[n])")
+                            for o=n:length(coil_names)
+                              if coil_names[o] != coil_names[k] && abs(rem(coil_phis[o] -coil_phis[n], 2*pi, RoundNearest)) < tol # && abs(rem(coil_phis[j] -coil_phis[m], 2*pi, RoundNearest)) < tol
+                                println("This coil is 2*pi*n apart from end of second pi bump: $(coil_names[n]) and $(coil_names[o])")
+                                for p=o+1:length(coil_names)
+                                  print("Checking if $(coil_names[o]) and $(coil_names[p]) are a pi bump... ")
+                                  if abs(coil_phis[p] - coil_phis[o] - pi) < tol
+                                  # Now we know that i,j,k,l are positive and m,n,o,p are negative
+                                    println("Found combination: $([coil_names[i], coil_names[j], coil_names[k], coil_names[l], coil_names[m], coil_names[n], coil_names[o], coil_names[p]])")
+                                    push!(unit_groups_list, coil_names[i])
+                                    push!(unit_groups_list, coil_names[j])
+                                    push!(unit_groups_list, coil_names[k])
+                                    push!(unit_groups_list, coil_names[l])
+                                    push!(unit_groups_list, coil_names[m])
+                                    push!(unit_groups_list, coil_names[n])
+                                    push!(unit_groups_list, coil_names[o])
+                                    push!(unit_groups_list, coil_names[p])
+                                    push!(unit_sgns_list, +1.)
+                                    push!(unit_sgns_list, +1.)  
+                                    push!(unit_sgns_list, +1.)  
+                                    push!(unit_sgns_list, +1.) 
+                                    push!(unit_sgns_list, -1.)
+                                    push!(unit_sgns_list, -1.)  
+                                    push!(unit_sgns_list, -1.)  
+                                    push!(unit_sgns_list, -1.) 
+                                    push!(unit_curkicks_list, coil_kicks[i])
+                                    push!(unit_curkicks_list, coil_kicks[j])
+                                    push!(unit_curkicks_list, coil_kicks[k])
+                                    push!(unit_curkicks_list, coil_kicks[l])
+                                    push!(unit_curkicks_list, coil_kicks[m])
+                                    push!(unit_curkicks_list, coil_kicks[n])
+                                    push!(unit_curkicks_list, coil_kicks[o])
+                                    push!(unit_curkicks_list, coil_kicks[p])
+                                  else
+                                    print("nope\n")
+                                  end
+                                end
+                              end
+                            end
+                          else
+                            print("Nope\n")
+                          end
+                        end
+                      end
+                    end
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+      n_per_group = 8
     end
 
     # Info to store is: each coil in the group, each of their current strengths, and each of their kick sgns/mags
@@ -216,6 +334,8 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["L*g^3*spin_dn
   (tmppath, tao_cmd) = mktemp()# open("$(path)/responses_$(str_kick)/BAGELS_1.cmd", "w")
   println(tao_cmd, "set ele * spin_tracking_method = sprint")
   println(tao_cmd, "set bmad_com spin_tracking_on = T")
+  #println(tao_cmd, "set bmad_com rel_tol_tracking = 1e-12")
+  #println(tao_cmd, "set bmad_com abs_tol_tracking = 1e-16")
 
   # First the baseline:
   for response in responses
@@ -234,10 +354,11 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["L*g^3*spin_dn
       coil = unit_groups[i,j]
       sgn = unit_sgns[i,j]
       curkick = unit_curkicks[i,j]
-      println(tao_cmd, "set ele $(coil) kick = $(curkick+sgn*kick)")
+      println(tao_cmd, "change ele $(coil) kick $(sgn*kick)")
       str_coils = str_coils * coil * "_"
     end
     str_coils = str_coils[1:end-1] * ".dlm"
+    println(tao_cmd, "scale")
     for response in responses
       str_response = base64encode(response)
       println(tao_cmd, "show -write $(path)/$(str_response)/$str_coils lat -python $at -at ($response)@e23.16")
@@ -245,8 +366,9 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["L*g^3*spin_dn
     # Reset coils to original strengths
     for j=1:length(unit_groups[i,:])
       coil = unit_groups[i,j]
+      sgn = unit_sgns[i,j]
       curkick = unit_curkicks[i,j]
-      println(tao_cmd, "set ele $(coil) kick = $(curkick)")
+      println(tao_cmd, "change ele $(coil) kick $(-sgn*kick)")
     end
   end
   println(tao_cmd, "exit")
@@ -256,8 +378,8 @@ function BAGELS_1(lat, unit_bump; kick=5e-7, tol=1e-8, responses=["L*g^3*spin_dn
 end
 
 """
-    BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suffix="", outf="\$(lat)_BAGELS.bmad", coil_regex=r".*",
-              A=[["L*g^3*spin_dn_dpz.x","L*g^3*spin_dn_dpz.y","L*g^3*spin_dn_dpz.z"]], eps_A=0, B=[["orbit.y"],["orbit.py"]], eps_B=0 ,
+    BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suffix="", outf="BAGELS.bmad", coil_regex=r".*",
+              A=[Tao.DEPOL], eps_A=0, B=[["orbit.y"]], eps_B=0 ,
               w_A=ones(length(A)), w_B=zeros(length(B))) 
 
 Best Adjustment Groups for ELectron Spin (BAGELS) method step 2: peform an SVD of the 
@@ -269,6 +391,7 @@ The vertical closed orbit unit bump types are:
 3. `opposing_2pin` bumps  -- Localized coupling, localized dispersion
 4. `2pi` bump             -- Localized coupling, delocalized dispersion
 5. `opposing_pi` bumps    -- Delocalized coupling, localized dispersion
+6. `opposing_2pi` bumps   -- Localized coupling, localized dispersion
 
 ### Input
 - `lat`       -- lat file name
@@ -283,9 +406,9 @@ The vertical closed orbit unit bump types are:
 - `do_amp`     -- (Optional) If true, calculates response matrix of |dn/ddelta| instead of dn/ddelta.x, which is the default 
 - `solve_knobs` -- (Optional) If set > 0, will print the knob settings for the first `solve_knobs` BAGELS knobs to minimize in a least squares sense dn/ddelta
 """
-function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suffix="", outf="$(lat)_BAGELS.bmad", coil_regex=r".*",
-                                  A=[["L*g^3*spin_dn_dpz.x","L*g^3*spin_dn_dpz.y","L*g^3*spin_dn_dpz.z"]], eps_A=0, B=[["orbit.y"]], eps_B=0 ,
-                                  w_A=ones(length(A)), w_B=zeros(length(B))) 
+function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suffix="", outf="BAGELS.bmad", coil_regex=r".*",
+                                  A=[Tao.DEPOL], eps_A=0, B=[["orbit.y"]], eps_B=0 ,
+                                  w_A=ones(length(A)), w_B=zeros(length(B)), include_knobs=-1) 
 
 
 
@@ -297,7 +420,7 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
 
   str_kick = @sprintf("%1.2e", kick) 
 
-  if unit_bump < 0 || unit_bump > 5
+  if unit_bump < 0 || unit_bump > 7
     println("Unit bump type not defined!")
     return
   end
@@ -395,9 +518,10 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
   #ATA = sparse(ATA)
   #BTB = sparse(BTB)
   #decomp, history = partialschur(A, nev=10, tol=1e-6, which=:SR);
-
+  #return BTB/norm(BTB)
   ATA = Symmetric(ATA/norm(ATA) + eps_A*I)
   BTB = Symmetric(BTB/norm(BTB) + eps_B*I)
+
 
   println("Condition number of A'A = $(cond(ATA))")
   println("Condition number of B'B = $(cond(BTB))")
@@ -448,8 +572,18 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
 
     if i == 1
       knob_out = open(outf, "w")
+      println(knob_out, "! BAGELS method knobs")
+      println(knob_out, "! A = $A")
+      println(knob_out, "! B = $B")
+      println(knob_out, "! eps_A = $eps_A")
+      println(knob_out, "! eps_B = $eps_B")
+      println(knob_out, "! w_A = $w_A, w_B = $w_B")
+      println(knob_out, "! coil_regex = $coil_regex")
     else
       knob_out = open(outf, "a")
+    end
+    if include_knobs == i-1
+      println(knob_out, "end_file")
     end
     
     println(knob_out, "$(prefix)$(Printf.format(Printf.Format("%0$(length(string(length(vals))))i"), i))$(suffix): group = {\t\t\t ! Eigenvalue = $(vals[i])")
@@ -471,6 +605,8 @@ function BAGELS_2(lat, unit_bump; kick=5e-7, solve_knobs=0, prefix="BAGELS", suf
     if i <= solve_knobs
       print(knob_out, ", X = $(strengths[i])")
     end
+
+    
     print(knob_out, "\n ")
     close(knob_out)
     
