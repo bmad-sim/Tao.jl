@@ -19,6 +19,7 @@ export  data_path,
         get_pol_data,
         run_map_tracking,
         run_pol_scan,
+        zip_pol_scan,
         download_pol_scan,
         read_pol_scan,
         get_pol_track_data,
@@ -39,7 +40,7 @@ const M_E = 0.51099895e6
 const ETAB_BAR = ["eta.b/sqrt(beta.b)", "eta.b*alpha.b/sqrt(beta.b)+etap.b*sqrt(beta.b)"]
 const C_BAR = ["cbar.11","cbar.12","cbar.21","cbar.22"]
 const DEPOL = ["sqrt(L*abs(g)^3)*spin_dn_dpz.x","sqrt(L*abs(g)^3)*spin_dn_dpz.y","sqrt(L*abs(g)^3)*spin_dn_dpz.z"]
-const G3LD =["L*g^3*spin_dn_dpz.x","L*g^3*spin_dn_dpz.y","L*g^3*spin_dn_dpz.z"]
+#const G3LD =["L*g^3*spin_dn_dpz.x","L*g^3*spin_dn_dpz.y","L*g^3*spin_dn_dpz.z"]
 
 # Returns empty string if lattice not found
 function data_path(lat)
@@ -360,6 +361,9 @@ struct PolTrackData
   P_t
   T_du_t 
   T_dd_t 
+  emit_a
+  emit_b
+  emit_c
 end
 
 """
@@ -454,7 +458,7 @@ The data can be retrieved using the `get_pol_data` method.
 ### Output 
 - `pol_data` -- PolData struct containing polarization quantities for lattice
 """
-function pol_scan(lat, agamma0)
+function pol_scan(lat, agamma0; sprint=true)
   path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
@@ -462,10 +466,12 @@ function pol_scan(lat, agamma0)
   end
 
   # Generate tao command script
-  tao_cmd = open("$(path)/spin.tao", "w")
-  ANOM_E = 0.00115965218128
-  M_E = 0.51099895e6
-  println(tao_cmd, "set ele * spin_tracking_method = sprint")
+  (tmppath, tao_cmd) = mktemp()
+  if sprint
+    println(tao_cmd, "set ele * spin_tracking_method = sprint")
+  else
+    println(tao_cmd, "set ele * spin_tracking_method = tracking")
+  end
   println(tao_cmd, "set bmad_com spin_tracking_on = T")
   println(tao_cmd, "set ele 0 e_tot = $(agamma0[1]*M_E/ANOM_E)")
   println(tao_cmd, "python -write $(path)/spin.dat spin_polarization")
@@ -478,7 +484,7 @@ function pol_scan(lat, agamma0)
   close(tao_cmd)
 
   # Execute the scan
-  run(`tao -lat $lat -noplot -noinit -nostart -command "call $(path)/spin.tao"`)
+  run(`tao -lat $lat -noplot -noinit -nostart -command "call $tmppath"`)
 
   # Calculate important quantities and store in data
   data = readdlm("$(path)/spin.dat", ';')[:,4]
@@ -957,12 +963,12 @@ end
 
 
 """
-    download_pol_scan(lat, order, sh)
+    zip_pol_scan(lat, order, sh)
 
-This routine reads the results of run_pol_scan from the CLASSE 
-computer and creates a PolTrackData for this lattice.
+This routine zips the results of run_pol_scan from the CLASSE 
+computer.
 """
-function download_pol_scan(lat, order, sh)
+function zip_pol_scan(lat, order, sh)
   path = data_path(lat)
   if path == ""
     println("Lattice file $(lat) not found!")
@@ -983,9 +989,40 @@ function download_pol_scan(lat, order, sh)
     mkpath(track_path)
   end
   remote_path = "~/trackings_jl" * track_path
+  #return `scp lnx4200:$remote_path/data.tar.gz $track_path`
   println(sh, "cd $(remote_path)")
   println(sh, "find . -name \"data.ave\" -o -name \"data.emit\" -o -name \"data.sigma\" | find  -name \"data.ave\" -o -name \"data.emit\" -o -name \"data.sigma\" | tar -czvf data.tar.gz -T -")
-  println(sh, "scp data.tar.gz \${SSH_CONNECTION%% *}:$(track_path)")
+  println(sh, "logout")
+  #println(sh, "scp lnx4200:$remote_path/data.tar.gz $track_path")
+  #println(sh, "scp data.tar.gz \${SSH_CONNECTION%% *}:$(track_path)")
+end
+
+"""
+
+This routine downloads the zipped tar from the CLASSE computer.
+"""
+function download_pol_scan(lat, order)
+  path = data_path(lat)
+  if path == ""
+    println("Lattice file $(lat) not found!")
+    return
+  end
+  if order == 1
+    track_path = "$(path)/1st_order_map"
+  elseif order == 2
+    track_path = "$(path)/2nd_order_map"
+  elseif order == 3
+    track_path = "$(path)/3rd_order_map"
+  elseif order == 0
+    track_path = "$(path)/bmad"
+  else
+    error("only order < 3 or Bmad tracking supported right now")
+  end
+  if !ispath(track_path)
+    mkpath(track_path)
+  end
+  remote_path = "~/trackings_jl" * track_path
+  run(`scp lnx4200:$remote_path/data.tar.gz $track_path`)
 end
 
 function read_pol_scan(lat, order, n_damp)
@@ -1031,6 +1068,9 @@ function read_pol_scan(lat, order, n_damp)
   tau_bks_interp = linear_interpolation(pol_data.agamma0, pol_data.tau_bks)
 
   tau_dep = Float64[]
+  emit_a = Float64[]
+  emit_b = Float64[]
+  emit_c = Float64[]
   for subdir in subdirs
     data_ave = readdlm(subdir * "/data.ave")
     row_start = findlast(x->occursin("#",string(x)), data_ave[:,1])[1] + 1
@@ -1040,6 +1080,15 @@ function read_pol_scan(lat, order, n_damp)
     data = DataFrame(X=t, Y=P)
     tau_dep_track = -coef(lm(@formula(Y ~ X), data))[2]^-1/60
     push!(tau_dep, tau_dep_track)
+
+    data_emit = readdlm(subdir * "/data.emit")
+    row_start = findlast(x->occursin("#",string(x)), data_emit[:,1])[1] + 1
+    emit_a_i = Float64.(data_emit[row_start+n_damp:end,4])
+    emit_b_i = Float64.(data_emit[row_start+n_damp:end,5])
+    emit_c_i = Float64.(data_emit[row_start+n_damp:end,6])
+    push!(emit_a, mean(emit_a_i))
+    push!(emit_b, mean(emit_b_i))
+    push!(emit_c, mean(emit_c_i))
   end
 
 
@@ -1060,7 +1109,10 @@ function read_pol_scan(lat, order, n_damp)
                                 T_dd,
                                 P_t,
                                 T_du_t,
-                                T_dd_t)
+                                T_dd_t,
+                                emit_a,
+                                emit_b,
+                                emit_c)
   names =["agamma0",
           "P_st",
           "P_dk",
@@ -1072,7 +1124,10 @@ function read_pol_scan(lat, order, n_damp)
           "T_dd",
           "P_t",
           "T_du_t",
-          "T_dd_t"]
+          "T_dd_t",
+          "emit_a",
+          "emit_b",
+          "emit_c"]
   pol_track_data_dlm = permutedims(hcat(names, permutedims(hcat(agamma0,
                                                                   P_st,
                                                                   P_dk,
@@ -1084,7 +1139,10 @@ function read_pol_scan(lat, order, n_damp)
                                                                   T_dd,
                                                                   P_t,
                                                                   T_du_t,
-                                                                  T_dd_t))))
+                                                                  T_dd_t,
+                                                                  emit_a,
+                                                                  emit_b,
+                                                                  emit_c))))
   writedlm("$(track_path)/pol_track_data.dlm", pol_track_data_dlm, ';')
 
   return pol_track_data
@@ -1247,6 +1305,7 @@ function get_pol_track_data(lat, order)
     println("Lattice file $(lat) not found!")
     return
   end
+  
   if order == 1
     track_path = "$(path)/1st_order_map"
   elseif order == 2
@@ -1279,7 +1338,10 @@ function get_pol_track_data(lat, order)
                   pol_track_data_dlm[:,9],
                   pol_track_data_dlm[:,10],
                   pol_track_data_dlm[:,11],
-                  pol_track_data_dlm[:,12])
+                  pol_track_data_dlm[:,12],
+                  pol_track_data_dlm[:,13],
+                  pol_track_data_dlm[:,14],
+                  pol_track_data_dlm[:,15])
 end
 
 end
