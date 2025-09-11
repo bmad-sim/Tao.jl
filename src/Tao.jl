@@ -401,10 +401,13 @@ are values used in the ESR of the EIC (`P_0` = 85%, `T` = 4.8 min)
 - `T_dd_t` -- How often the parallel bunches need replacement
 """
 function calc_P_t(P_dk, tau_eq; P_0 = 0.85, T = 4.8)
-  P_dd = x -> (-P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x
-  P_du = x -> (P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (-P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x
+  P_dd = x -> @. P_dk - tau_eq/x*(P_dk+P_0)*(1-exp(-x/tau_eq))
+  #(ifelse.( x .<= 0, -P_0, -P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x)
+  P_du = x -> @.  P_dk - tau_eq/x*(P_dk-P_0)*(1-exp(-x/tau_eq))
+  #(ifelse.(isinf.(x), P_dk, P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (-P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x)
   P = T_du -> (P_dd((T_du.*T./(2 .*T_du.-T))) + P_du(T_du)).^2
 
+  #P = T_du -> (println("T_du = $T_du"); T_dd = (T_du.*T./(2 .*T_du.-T)); println("T_dd = $T_dd"); return (P_dd(T_dd) + P_du(T_du)).^2)
   T_du_t = nlsolve(P, 10. .*ones(length(P_dk))).zero
   T_dd_t = (T_du_t.*T./(2 .*T_du_t.-T))
   P_t = P_du(T_du_t)
