@@ -8,6 +8,7 @@ using DataFrames, StatsBase, GLM
 using Random, Distributions
 using SparseArrays
 using Base64
+using LambertW
 
 export  data_path,
         PolData,
@@ -417,29 +418,37 @@ end
 
 
 """
-    calc_T(P_dk, tau_eq; P_0 = 0.85, P_min_avg = 0.7)
+    calc_T(P_dk, tau_eq; P_0 = 0.85, P_t = 0.7)
 
 Calculates how often the bunches would need to be replaced in a lattice with 
 equal bunches parallel and antiparallel to the arc dipole fields to maintain 
-a minimum time-averaged polarization of `P_min_avg` Defaults are values used 
-in the ESR of the EIC (`P_0` = 85%, `P_min_avg` = 70%)
+a time-averaged polarization of `P_t` Defaults are values used 
+in the ESR of the EIC (`P_0` = 85%, `P_t` = 70%)
 
 ### Input
 - `P_dk`      -- Array of DK polarizations
 - `tau_eq`    -- Array of corresponding equilibrium times
 - `P_0`       -- (Optional) Initial bunch polarization at injection
-- `P_min_avg` -- (Optional) Minimum-allowable time-averaged polarization
+- `P_t`       -- (Optional) Minimum-allowable time-averaged polarization
 
 ### Output
-- `T`    -- Average bunch replacement time to maintain `P_min_avg`
-- `T_du` -- Antiparallel bunch replacement time to maintain `P_min_avg`
-- `T_dd` -- Parallel bunch replacement time to maintain `P_min_avg`
+- `T`    -- Average bunch replacement time to maintain `P_t`
+- `T_du` -- Antiparallel bunch replacement time to maintain `P_t`
+- `T_dd` -- Parallel bunch replacement time to maintain `P_t`
 """
-function calc_T(P_dk, tau_eq; P_0 = 0.85, P_min_avg = 0.7)
-  P_dd = x -> (-P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x .+ P_min_avg
-  P_du = x -> (P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (-P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x .- P_min_avg
-  T_dd = nlsolve(P_dd, 10. .*ones(length(P_dk))).zero
-  T_du = nlsolve(P_du, 10. .*ones(length(P_dk))).zero
+function calc_T(P_dk, tau_eq; P_0 = 0.85, P_t = 0.7)
+  #P_dd = x -> @. P_dk - tau_eq/x*(P_dk+P_0)*(1-exp(-x/tau_eq)) + P_min_avg
+  # x -> (-P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x .+ P_min_avg
+  #P_du = x -> @.  P_dk - tau_eq/x*(P_dk-P_0)*(1-exp(-x/tau_eq)) - P_min_avg
+  # x -> (P_0.*tau_eq .- P_dk.*tau_eq .+ P_dk.*x .+ (-P_0.*tau_eq .+ P_dk.*tau_eq).*exp.(-x./tau_eq))./x .- P_min_avg
+  #T_dd = nlsolve(P_dd, 10. .*ones(length(P_dk))).zero
+  #T_du = nlsolve(P_du, 10. .*ones(length(P_dk))).zero
+  P_dd = @. (P_dk + P_0)/(P_dk + P_t)
+  P_du = @. (P_dk - P_0)/(P_dk - P_t)
+  #println(P_dd)
+  #println(P_du)
+  T_dd = @. tau_eq*(P_dd + lambertw(-P_dd*exp(-P_dd)))
+  T_du = @. tau_eq*(P_du + lambertw(-P_du*exp(-P_du)))
   
   T=2*T_dd.*T_du./(T_dd + T_du)
   return T, T_du, T_dd
